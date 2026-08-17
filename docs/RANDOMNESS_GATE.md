@@ -2,14 +2,16 @@
 
 Build status and implementation order are tracked in [BUILD_PLAN.md](BUILD_PLAN.md).
 
-Status: **devnet path selected; deployment pending**  
+Status: **deterministic dev path implemented; mainnet gate pending**
 Checked: 2026-08-17
 
-Fate cannot lock Player funds against the current Entropy devnet setup yet. The source integration is understandable, but the required devnet deployment and a safe missed-sample recovery path do not exist today.
+Fate does not depend on Entropy on localnet or devnet. Those deployments use the compile-time `dev-randomness` fixture to exercise the full custody loop, alternating Player and Staker outcomes. The normal production artifact rejects the fixture instruction. Mainnet deployment remains gated on replacing that fixture entry point with the official Entropy account/CPI validation described below.
 
 ## Selected Build Path
 
-Fate will build its deterministic program core and application first. Before any devnet custody test, the project will deploy the verified Entropy source under a Fate-controlled devnet program ID and operate a compatible dev-only commit-chain provider. Mainnet will use a separate Fate deployment compiled against the official Entropy program ID after behavior and output parity are proven.
+Fate will build and exercise the complete custody loop on localnet and devnet with the deterministic fixture. Mainnet will use a separate Fate deployment compiled without `dev-randomness` and integrated with the official Entropy program.
+
+Build the dev artifact with `NO_DNA=1 cargo build-sbf --features dev-randomness`. Its `initialize` call accepts placeholder Entropy accounts because they are never read; the System Program ID may be supplied for both fields. `NO_DNA=1 steel build` produces the production artifact and restores strict executable-program, owner, and account-data checks. Both commands write `target/deploy/fate.so`, so always rebuild for the intended cluster immediately before deployment.
 
 The devnet copy should change only environment identity and provisioning behavior. Fate itself must reject predictable missed-slot fallback values so the same protection remains active when the official mainnet Entropy program is used.
 

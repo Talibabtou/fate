@@ -220,11 +220,11 @@ mod tests {
 
     #[test]
     fn account_size_remains_bounded() {
-        assert_eq!(PlayerRegistry::SIZE, 11_288);
+        assert_eq!(PlayerRegistry::SIZE, 10_232);
     }
 
     #[test]
-    fn registry_rejects_the_129th_wallet() {
+    fn registry_rejects_the_first_wallet_over_capacity() {
         let mut registry = Box::new(PlayerRegistry::zeroed());
         for _ in 0..MAX_PLAYERS_PER_DRAW {
             registry.get_or_insert(Pubkey::new_unique()).unwrap();

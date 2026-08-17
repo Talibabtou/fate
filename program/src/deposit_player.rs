@@ -36,6 +36,9 @@ pub fn process_deposit_player(
     }
 
     let config = config_info.as_account::<Config>(program_id)?;
+    if config.version != PROGRAM_VERSION {
+        return Err(FateError::InvalidInitializationState.into());
+    }
     if config.is_paused() {
         return Err(FateError::ProtocolPaused.into());
     }

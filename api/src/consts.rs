@@ -27,7 +27,9 @@ pub const STAKER_JACKPOT_BPS: u64 = 3_000;
 pub const STAKER_PRO_RATA_BPS: u64 = 6_500;
 
 pub const MAX_STAKERS: usize = 512;
-pub const MAX_PLAYERS_PER_DRAW: usize = 128;
+// Keeps each draw-scoped registry below Solana's 10,240-byte per-instruction
+// account growth limit so the next draw can be created atomically at settlement.
+pub const MAX_PLAYERS_PER_DRAW: usize = 116;
 
 pub const CONFIG_SEED: &[u8] = b"config";
 pub const STAKER_VAULT_SEED: &[u8] = b"staker-vault";

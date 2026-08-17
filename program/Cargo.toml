@@ -13,6 +13,7 @@ name = "fate"
 [features]
 default = []
 no-entrypoint = []
+dev-randomness = []
 
 [dependencies]
 fate-api.workspace = true

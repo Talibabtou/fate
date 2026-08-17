@@ -26,6 +26,9 @@ pub fn process_refund_player(
     }
 
     let config = config_info.as_account::<Config>(program_id)?;
+    if config.version != PROGRAM_VERSION {
+        return Err(FateError::InvalidInitializationState.into());
+    }
     let draw_id_bytes = config.current_draw_id.to_le_bytes();
     draw_info
         .is_writable()?

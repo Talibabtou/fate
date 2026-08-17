@@ -220,7 +220,7 @@ fn validate_staker_positions(
     Ok(())
 }
 
-fn select_side_from_entropy(
+pub fn select_side_from_entropy(
     entropy_value: &[u8; 32],
     draw_id: u64,
 ) -> Result<SelectedSide, FateError> {

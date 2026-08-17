@@ -8,9 +8,12 @@ mod deposit_player;
 mod deposit_stake;
 mod grow_program_accounts;
 mod initialize;
+mod lock_draw;
 mod refund_player;
 mod request_stake_withdrawal;
 mod set_pause;
+#[cfg(feature = "dev-randomness")]
+mod settle_draw_dev;
 
 use activate_draw::*;
 use claim_player::*;
@@ -20,9 +23,12 @@ use deposit_stake::*;
 use fate_api::prelude::*;
 use grow_program_accounts::*;
 use initialize::*;
+use lock_draw::*;
 use refund_player::*;
 use request_stake_withdrawal::*;
 use set_pause::*;
+#[cfg(feature = "dev-randomness")]
+use settle_draw_dev::*;
 use steel::*;
 
 pub fn process_instruction(
@@ -50,8 +56,33 @@ pub fn process_instruction(
         FateInstruction::GrowProgramAccounts => {
             process_grow_program_accounts(program_id, accounts, data)
         }
+        FateInstruction::LockDraw => process_lock_draw(program_id, accounts, data),
+        FateInstruction::SettleDrawDev => {
+            #[cfg(feature = "dev-randomness")]
+            {
+                process_settle_draw_dev(program_id, accounts, data)
+            }
+            #[cfg(not(feature = "dev-randomness"))]
+            {
+                let _ = (accounts, data);
+                Err(ProgramError::InvalidInstructionData)
+            }
+        }
     }
 }
 
 #[cfg(not(feature = "no-entrypoint"))]
 entrypoint!(process_instruction);
+
+#[cfg(all(test, not(feature = "dev-randomness")))]
+mod production_tests {
+    use super::*;
+
+    #[test]
+    fn production_build_rejects_dev_settlement() {
+        assert_eq!(
+            process_instruction(&Pubkey::new_unique(), &[], &SettleDrawDev {}.to_bytes()),
+            Err(ProgramError::InvalidInstructionData)
+        );
+    }
+}

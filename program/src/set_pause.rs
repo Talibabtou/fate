@@ -26,6 +26,9 @@ pub fn process_set_pause(
         .has_seeds(&[CONFIG_SEED], program_id)?;
 
     let config = config_info.as_account_mut::<Config>(program_id)?;
+    if config.version != PROGRAM_VERSION {
+        return Err(FateError::InvalidInitializationState.into());
+    }
     if config.authority != *authority_info.key {
         return Err(FateError::NotAuthorized.into());
     }

@@ -18,8 +18,7 @@ pub fn process_grow_program_accounts(
         return Err(FateError::InvalidInitializationState.into());
     }
 
-    let [payer, authority, config_info, staker_registry_info, player_registry_info, system_program_info] =
-        accounts
+    let [payer, authority, config_info, staker_registry_info, system_program_info] = accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
@@ -37,15 +36,7 @@ pub fn process_grow_program_accounts(
         .is_writable()?
         .has_owner(program_id)?
         .has_seeds(&[STAKER_REGISTRY_SEED], program_id)?;
-    let draw_id_bytes = 0u64.to_le_bytes();
-    player_registry_info
-        .is_writable()?
-        .has_owner(program_id)?
-        .has_seeds(&[PLAYER_REGISTRY_SEED, &draw_id_bytes], program_id)?;
-    if staker_registry_info.key == player_registry_info.key
-        || staker_registry_info.key == config_info.key
-        || player_registry_info.key == config_info.key
-    {
+    if staker_registry_info.key == config_info.key {
         return Err(ProgramError::InvalidArgument);
     }
 
@@ -65,20 +56,7 @@ pub fn process_grow_program_accounts(
         FateAccount::StakerRegistry as u8,
         step,
     )?;
-    grow_registry(
-        payer,
-        player_registry_info,
-        system_program_info,
-        PlayerRegistry::SIZE,
-        FateAccount::PlayerRegistry as u8,
-        step,
-    )?;
-
-    if staker_registry_info.data_len() == StakerRegistry::SIZE
-        && player_registry_info.data_len() == PlayerRegistry::SIZE
-    {
-        let registry = player_registry_info.as_account_mut::<PlayerRegistry>(program_id)?;
-        registry.draw_id = 0;
+    if staker_registry_info.data_len() == StakerRegistry::SIZE {
         config_info.as_account_mut::<Config>(program_id)?.version = PROGRAM_VERSION;
     }
 
@@ -147,7 +125,7 @@ mod tests {
                 .div_ceil(MAX_PERMITTED_DATA_INCREASE)
         }
 
-        assert_eq!(steps(PlayerRegistry::SIZE), 2);
+        assert_eq!(steps(PlayerRegistry::SIZE), 1);
         assert_eq!(steps(StakerRegistry::SIZE), 5);
     }
 }

@@ -14,6 +14,8 @@ pub enum FateInstruction {
     ClaimPlayer = 8,
     ClaimStakeWithdrawal = 9,
     GrowProgramAccounts = 10,
+    LockDraw = 11,
+    SettleDrawDev = 12,
 }
 
 #[repr(C)]
@@ -70,6 +72,16 @@ pub struct GrowProgramAccounts {
     pub step: [u8; 8],
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct LockDraw {}
+
+/// Deterministic localnet/devnet fixture. The production program rejects this
+/// instruction unless it was explicitly built with `dev-randomness`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct SettleDrawDev {}
+
 instruction!(FateInstruction, Initialize);
 instruction!(FateInstruction, DepositStake);
 instruction!(FateInstruction, RequestStakeWithdrawal);
@@ -81,6 +93,8 @@ instruction!(FateInstruction, Unpause);
 instruction!(FateInstruction, ClaimPlayer);
 instruction!(FateInstruction, ClaimStakeWithdrawal);
 instruction!(FateInstruction, GrowProgramAccounts);
+instruction!(FateInstruction, LockDraw);
+instruction!(FateInstruction, SettleDrawDev);
 
 #[cfg(test)]
 mod tests {
@@ -168,5 +182,14 @@ mod tests {
         .to_bytes();
         assert_eq!(bytes[0], FateInstruction::GrowProgramAccounts as u8);
         assert_eq!(&bytes[1..], &3u64.to_le_bytes());
+    }
+
+    #[test]
+    fn draw_progression_wire_formats_are_stable() {
+        assert_eq!(LockDraw {}.to_bytes(), [FateInstruction::LockDraw as u8]);
+        assert_eq!(
+            SettleDrawDev {}.to_bytes(),
+            [FateInstruction::SettleDrawDev as u8]
+        );
     }
 }

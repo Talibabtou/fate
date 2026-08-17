@@ -133,20 +133,20 @@ Start with fixed-size registries. This bounds account rent, transaction compute,
 - [x] Define a fixed `StakerRegistry` with at most 512 wallet entries.
 - [x] Define one persistent Staker entry per wallet inside the registry with active shares, pending deposit, queued withdrawal, frozen withdrawal claim, and status.
 - [x] Define `Draw` with state, timestamps, snapshots, threshold data, Player totals, Entropy reference, result, fee, erosion, winner, and claim state.
-- [x] Define a fixed Player registry with at most 128 wallets in each draw.
+- [x] Define a fixed Player registry with at most 116 wallets in each draw so it can be created atomically below Solana's account-growth limit.
 - [x] Store each Player wallet's refundable deposit, committed deposit, and summed boosted weight.
 - [x] Store the ten latest settled draw IDs in a fixed ring buffer in `Config`.
 - [x] Derive every PDA from fixed prefixes and explicit IDs.
 - [x] Calculate account rent and publish it in the technical notes.
-- [ ] Benchmark 512 Stakers and 128 Players against Solana account-size and compute limits.
+- [ ] Benchmark 512 Stakers and 116 Players against Solana compute limits.
 - [ ] Lower capacities if the maximum settlement cannot complete with a safety margin.
 
 
 
 ## Program Instructions
 
-- [x] `initialize`: create configuration, vault, first draw, treasury references, and registry bootstrap accounts.
-- [x] `grow_program_accounts`: grow the fixed registries within Solana's per-instruction limit and enable the program only after all five ordered steps finish.
+- [x] `initialize`: create configuration, vault, first draw, Player registry, treasury references, and the Staker registry bootstrap account.
+- [x] `grow_program_accounts`: grow the persistent Staker registry within Solana's per-instruction limit and enable the program only after all five ordered steps finish.
 - [x] `deposit_stake`: transfer SOL, mint shares immediately when no funding snapshot exists, or queue SOL for the next draw.
 - [x] `request_stake_withdrawal`: execute during `FUNDING`, update the snapshot and threshold, or queue the request from `ACTIVATED` until settlement.
 - [x] `deposit_player`: create or update one wallet entry, transfer refundable SOL, record boosted weight, and create the first-Player snapshot when needed.
@@ -154,26 +154,25 @@ Start with fixed-size registries. This bounds account rent, transaction compute,
 - [x] Reset the funding clock and snapshot if every Player refunds before activation.
 - [x] `activate_draw`: verify the live decayed threshold and start the five-minute countdown.
 - [x] Treat every Player deposit during countdown as committed immediately.
-- [ ] `lock_draw`: close deposits after countdown and bind the draw to its Entropy request.
-- [ ] `settle_draw`: consume finalized Entropy, select one side, select exactly one wallet, calculate payouts, and make the result immutable.
-  Deterministic selection and payout planning are implemented against fixed entropy fixtures; Entropy validation and custody mutation remain gated.
-- [ ] On a Player win, move the full payout into the winner's claimable balance.
-- [ ] On a Staker win, add the 65% distribution to vault assets and mint jackpot value to the selected Staker without changing other Stakers' ownership fraction.
-- [ ] After settlement, price and execute queued Staker withdrawals.
+- [x] `lock_draw`: permissionlessly close deposits at the exact countdown boundary.
+- [x] `settle_draw_dev`: in an explicitly feature-gated localnet/devnet build, alternate deterministic Player and Staker fixtures, select exactly one wallet, settle custody, and atomically create the next draw.
+- [ ] `settle_draw`: replace only the dev fixture source with a verified mainnet Entropy CPI/account gate before production deployment.
+- [x] On a Player win, move the full payout into the winner's claimable balance.
+- [x] On a Staker win, add the 65% distribution to vault assets and mint jackpot value to the selected Staker without changing other Stakers' ownership fraction.
+- [x] After settlement, price and execute queued Staker withdrawals.
 - [x] `claim_stake_withdrawal`: pay a Staker's frozen post-settlement withdrawal liability without depending on pause or the current draw.
-- [ ] After settlement, mint shares for queued Staker deposits at the post-settlement share price.
-  Both queue transformations are implemented and invariant-tested inside the fixture-only settlement transition; they remain unreachable until the Entropy-gated handler is added.
+- [x] After settlement, mint shares for queued Staker deposits at the post-settlement share price.
 - [x] `claim_player`: transfer the full recorded claim once and mark it claimed.
 - [x] `pause`: stop new deposits and activation.
 - [x] `unpause`: reopen new deposits and activation.
-- [ ] Ensure pause never blocks pending Player refunds, Staker exits, locked-draw settlement, or claims.
+- [x] Ensure pause never blocks pending Player refunds, Staker exits, locked-draw settlement, or claims.
 - [ ] Emit compact events for deposits, refunds, activation, lock, settlement, queued Staker actions, claims, and pause changes.
 
 
 
 ## Randomness
 
-Build order decision: implement the deterministic program and app against fixtures first, then deploy the verified Entropy source under a Fate-controlled devnet ID with a dev-only provider. Custody testing remains blocked until that deployment passes the lifecycle and recovery tests. Mainnet uses the official Entropy ID only after output parity is demonstrated.
+Build order decision: localnet and devnet use a deterministic settlement fixture compiled only with `dev-randomness`. Even draw IDs exercise Player settlement and odd draw IDs exercise Staker settlement. The normal production build rejects that instruction. Before mainnet, replace the fixture gate with the official mainnet Entropy call and retain the same audited selection and settlement core.
 
 - [x] Read `repos/entropy` and ORE's `new_var`, `deploy`, and `reset` handlers as the integration references.
 - [ ] Create a Fate-owned Entropy variable rather than sharing ORE's variable.
@@ -191,7 +190,7 @@ Live verification on 2026-08-17 found no Entropy program at its declared ID on d
 
 ## Program Tests
 
-The current non-randomness lifecycle runs through the real Solana runtime and the compiled SBF artifact. It covers multi-step genesis, Staker and Player deposits, pending Player refund, immediate and queued Staker withdrawal requests, pause-safe exits, activation, and exact-floor rejection. Entropy-gated lock and settlement coverage remains pending.
+The lifecycle runs through the real Solana runtime. It covers multi-step genesis, Staker and Player deposits, pending Player refund, immediate and queued Staker withdrawal requests, pause-safe exits, activation, exact-floor rejection, countdown locking, both settlement sides, custody transfers, history updates, and creation of following draws. Mainnet Entropy account/CPI validation remains pending.
 
 - [ ] Test all state transitions and reject transitions from the wrong phase.
 - [ ] Test every instruction's owner, data-length, discriminator, signer, writable/read-only, PDA seed, canonical bump, and stored-relationship validation.
@@ -212,7 +211,7 @@ The current non-randomness lifecycle runs through the real Solana runtime and th
 - [ ] Test malformed, substituted, duplicate, non-writable, and incorrectly owned accounts.
 - [ ] Test unauthorized administration and false Entropy accounts.
 - [ ] Test double settlement, double claim, replay, stale draw IDs, and stale randomness.
-- [ ] Test paused-state exits and locked-draw settlement.
+- [x] Test paused-state exits and locked-draw settlement.
 - [ ] Run randomized invariant tests for lamport conservation and share ownership.
 - [ ] Run `steel test`, `steel build`, and `cargo test-sbf` before devnet deployment.
   Current non-randomness baseline passes all three; rerun after the Entropy-gated instructions are complete.
@@ -223,7 +222,7 @@ The current non-randomness lifecycle runs through the real Solana runtime and th
 
 The keeper is a small script, not a service platform. State transitions remain callable by anyone.
 
-- [ ] Add one Node script under `app/scripts` that reads the current draw and submits only a transition that is due.
+- [ ] Add one Node script under `app/scripts` that reads the current draw and submits only a transition that is due. Run it as a separate long-lived worker; see `KEEPER.md`.
 - [ ] Handle activation, locking, Entropy sampling and reveal, timeout recovery, and settlement.
 - [ ] Use a dedicated hot fee-payer key with a limited SOL balance.
 - [ ] Keep the authority and fee treasury wallet out of the keeper process.
@@ -334,7 +333,7 @@ One segmented control changes the central action between Staker and Player. The 
 ## Mainnet Gates
 
 - [ ] Replace synthetic arrival assumptions with observed devnet behavior.
-- [ ] Review whether the 512 Staker and 128 Player limits match observed demand and compute use.
+- [ ] Review whether the 512 Staker and 116 Player limits match observed demand and compute use.
 - [ ] Complete an independent Solana program security review.
 - [ ] Review Entropy's production status, operator assumptions, outage behavior, and economic security.
 - [ ] Move upgrade and treasury authority to a multisig.

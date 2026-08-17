@@ -179,13 +179,48 @@ pub fn grow_program_accounts(
             AccountMeta::new_readonly(authority, true),
             AccountMeta::new(config_pda(&program_id).0, false),
             AccountMeta::new(staker_registry_pda(&program_id).0, false),
-            AccountMeta::new(player_registry_pda(&program_id, 0).0, false),
             AccountMeta::new_readonly(system_program::ID, false),
         ],
         data: GrowProgramAccounts {
             step: step.to_le_bytes(),
         }
         .to_bytes(),
+    }
+}
+
+pub fn lock_draw(program_id: Pubkey, draw_id: u64) -> Instruction {
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new_readonly(config_pda(&program_id).0, false),
+            AccountMeta::new(draw_pda(&program_id, draw_id).0, false),
+        ],
+        data: LockDraw {}.to_bytes(),
+    }
+}
+
+pub fn settle_draw_dev(
+    program_id: Pubkey,
+    payer: Pubkey,
+    fee_treasury: Pubkey,
+    draw_id: u64,
+) -> Instruction {
+    let next_draw_id = draw_id.saturating_add(1);
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new(payer, true),
+            AccountMeta::new(config_pda(&program_id).0, false),
+            AccountMeta::new(draw_pda(&program_id, draw_id).0, false),
+            AccountMeta::new(player_registry_pda(&program_id, draw_id).0, false),
+            AccountMeta::new(staker_vault_pda(&program_id).0, false),
+            AccountMeta::new(staker_registry_pda(&program_id).0, false),
+            AccountMeta::new(fee_treasury, false),
+            AccountMeta::new(draw_pda(&program_id, next_draw_id).0, false),
+            AccountMeta::new(player_registry_pda(&program_id, next_draw_id).0, false),
+            AccountMeta::new_readonly(system_program::ID, false),
+        ],
+        data: SettleDrawDev {}.to_bytes(),
     }
 }
 
@@ -242,7 +277,7 @@ mod tests {
         let authority = Pubkey::new_unique();
         let instruction = grow_program_accounts(program_id, payer, authority, 3);
 
-        assert_eq!(instruction.accounts.len(), 6);
+        assert_eq!(instruction.accounts.len(), 5);
         assert_eq!(instruction.accounts[0], AccountMeta::new(payer, true));
         assert_eq!(
             instruction.accounts[1],
@@ -251,10 +286,6 @@ mod tests {
         assert_eq!(
             instruction.accounts[3].pubkey,
             staker_registry_pda(&program_id).0
-        );
-        assert_eq!(
-            instruction.accounts[4].pubkey,
-            player_registry_pda(&program_id, 0).0
         );
     }
 

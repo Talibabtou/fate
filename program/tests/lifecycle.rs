@@ -1,6 +1,8 @@
 use fate_api::prelude::*;
 use solana_program::pubkey::Pubkey;
 use solana_program_test::{processor, ProgramTest, ProgramTestContext};
+#[cfg(feature = "dev-randomness")]
+use solana_sdk::clock::Clock;
 use solana_sdk::{
     account::Account,
     instruction::Instruction,
@@ -15,6 +17,8 @@ struct TestFixture {
     context: ProgramTestContext,
     program_id: Pubkey,
     authority: Keypair,
+    #[cfg(feature = "dev-randomness")]
+    fee_treasury: Pubkey,
 }
 
 impl TestFixture {
@@ -42,6 +46,16 @@ impl TestFixture {
                 lamports: SOL,
                 data: vec![0],
                 owner: entropy_program,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+        test.add_account(
+            fee_treasury,
+            Account {
+                lamports: SOL,
+                data: vec![],
+                owner: solana_program::system_program::ID,
                 executable: false,
                 rent_epoch: 0,
             },
@@ -101,6 +115,8 @@ impl TestFixture {
             context,
             program_id,
             authority,
+            #[cfg(feature = "dev-randomness")]
+            fee_treasury,
         }
     }
 
@@ -123,6 +139,102 @@ impl TestFixture {
             .unwrap()
             .unwrap()
     }
+}
+
+#[cfg(feature = "dev-randomness")]
+#[tokio::test]
+async fn dev_draw_loop_settles_both_sides_and_creates_each_next_draw() {
+    let mut fixture = TestFixture::start().await;
+    let staker = Keypair::new();
+    let player = Keypair::new();
+    fixture.fund(&staker.pubkey(), 4 * SOL).await;
+    fixture.fund(&player.pubkey(), 2 * SOL).await;
+
+    process_instruction(
+        &mut fixture.context,
+        deposit_stake(fixture.program_id, staker.pubkey(), 0, 2 * SOL),
+        &[&staker],
+    )
+    .await
+    .unwrap();
+
+    for (draw_id, expected_side) in [(0, WinnerSide::Player), (1, WinnerSide::Staker)] {
+        process_instruction(
+            &mut fixture.context,
+            deposit_player(fixture.program_id, player.pubkey(), draw_id, 100_000_000),
+            &[&player],
+        )
+        .await
+        .unwrap();
+        process_instruction(
+            &mut fixture.context,
+            activate_draw(fixture.program_id, draw_id),
+            &[],
+        )
+        .await
+        .unwrap();
+
+        assert!(process_instruction(
+            &mut fixture.context,
+            lock_draw(fixture.program_id, draw_id),
+            &[],
+        )
+        .await
+        .is_err());
+        let active_account = fixture
+            .account(draw_pda(&fixture.program_id, draw_id).0)
+            .await;
+        let locks_at = read_account::<Draw>(&active_account).locks_at;
+        fixture.context.warp_to_slot(draw_id + 2).unwrap();
+        fixture.context.set_sysvar(&Clock {
+            unix_timestamp: locks_at,
+            ..Clock::default()
+        });
+        process_instruction(
+            &mut fixture.context,
+            lock_draw(fixture.program_id, draw_id),
+            &[],
+        )
+        .await
+        .unwrap();
+        let payer = fixture.context.payer.pubkey();
+        process_instruction(
+            &mut fixture.context,
+            settle_draw_dev(fixture.program_id, payer, fixture.fee_treasury, draw_id),
+            &[],
+        )
+        .await
+        .unwrap();
+
+        let settled_account = fixture
+            .account(draw_pda(&fixture.program_id, draw_id).0)
+            .await;
+        let settled = read_account::<Draw>(&settled_account);
+        assert_eq!(settled.phase(), Some(DrawPhase::Settled));
+        assert_eq!(settled.winner_side(), Some(expected_side));
+        assert_eq!(settled.entropy_sample_valid, 1);
+
+        let next_id = draw_id + 1;
+        let next_account = fixture
+            .account(draw_pda(&fixture.program_id, next_id).0)
+            .await;
+        let next = read_account::<Draw>(&next_account);
+        assert_eq!(next.id, next_id);
+        assert_eq!(next.phase(), Some(DrawPhase::Funding));
+        let next_registry_account = fixture
+            .account(player_registry_pda(&fixture.program_id, next_id).0)
+            .await;
+        assert_eq!(
+            read_account::<PlayerRegistry>(&next_registry_account).draw_id,
+            next_id
+        );
+    }
+
+    let config_account = fixture.account(config_pda(&fixture.program_id).0).await;
+    let config = read_account::<Config>(&config_account);
+    assert_eq!(config.current_draw_id, 2);
+    assert_eq!(config.recent_draw_count, 2);
+    assert_eq!(&config.recent_draws_newest_first()[..2], &[1, 0]);
 }
 
 async fn process_instruction(

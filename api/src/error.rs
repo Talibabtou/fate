@@ -68,6 +68,9 @@ pub enum FateError {
 
     #[error("Program account initialization is incomplete or invalid")]
     InvalidInitializationState = 21,
+
+    #[error("The draw countdown is still active")]
+    CountdownActive = 22,
 }
 
 error!(FateError);

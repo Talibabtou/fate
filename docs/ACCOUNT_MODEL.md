@@ -14,11 +14,11 @@ Fate uses fixed Steel accounts and one Player custody account per draw. All trac
 | `StakerVault` | 64 bytes | 0.00133632 SOL | Persistent |
 | `StakerRegistry` | 40,976 bytes | 0.28608384 SOL | Persistent |
 | `Draw` | 320 bytes | 0.00311808 SOL | Retain for recent results, then close |
-| `PlayerRegistry` | 11,288 bytes | 0.07945536 SOL | One per draw; retain while refunds or a claim remain |
+| `PlayerRegistry` | 10,232 bytes | 0.07210560 SOL | One per draw; retain while refunds or a claim remain |
 
-Initial configuration plus the first draw costs approximately `0.37266624 SOL` in refundable account rent. Each additional live `Draw` and `PlayerRegistry` pair costs approximately `0.08257344 SOL`. Query rent again before deployment because cluster economics can change.
+Initial configuration plus the first draw costs approximately `0.36531648 SOL` in refundable account rent. Each additional live `Draw` and `PlayerRegistry` pair costs approximately `0.07522368 SOL`. Query rent again before deployment because cluster economics can change.
 
-The two registries exceed Solana's 10,240-byte per-instruction account-growth limit. Genesis therefore creates each registry as an 8-byte, program-owned bootstrap account, then the authority runs five ordered `grow_program_accounts` steps. Each step grows by at most 10,240 bytes and funds only the new rent deficit. The fifth step marks `Config.version` ready; normal protocol instructions cannot deserialize or use a partially grown registry.
+The persistent Staker registry exceeds Solana's 10,240-byte per-instruction account-growth limit. Genesis creates it as an 8-byte, program-owned bootstrap account, then the authority runs five ordered `grow_program_accounts` steps. Each step grows by at most 10,240 bytes and funds only the new rent deficit. The fifth step marks `Config.version` ready, and every operational instruction rejects the incomplete version. The Player cap is deliberately 116 so its 10,232-byte registry and every following draw can be created atomically.
 
 ## Custody
 
@@ -36,7 +36,7 @@ Settlement prices every queued exit against the same post-result share price, bu
 ## Fixed Registries
 
 - `StakerRegistry` contains 512 entries of 80 bytes.
-- `PlayerRegistry` contains 128 entries of 88 bytes.
+- `PlayerRegistry` contains 116 entries of 88 bytes.
 - One wallet occupies at most one entry in each registry.
 - Repeat deposits aggregate into the existing wallet entry.
 - Empty entries can be reused.

@@ -22,6 +22,9 @@ pub fn process_activate_draw(
     }
 
     let config = config_info.as_account::<Config>(program_id)?;
+    if config.version != PROGRAM_VERSION {
+        return Err(FateError::InvalidInitializationState.into());
+    }
     if config.is_paused() {
         return Err(FateError::ProtocolPaused.into());
     }
@@ -51,6 +54,7 @@ pub fn process_activate_draw(
 fn validate_funding_positions(draw: &Draw, registry: &PlayerRegistry) -> Result<(), FateError> {
     if draw.phase() != Some(DrawPhase::Funding)
         || draw.first_player_at <= 0
+        || draw.staker_tvl_snapshot == 0
         || draw.player_tvl_lamports == 0
         || registry.occupied_entries == 0
         || draw.outstanding_player_claim_lamports != 0

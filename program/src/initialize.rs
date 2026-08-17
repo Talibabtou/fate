@@ -25,11 +25,10 @@ pub fn process_initialize(
         return Err(ProgramError::InvalidArgument);
     }
     system_program_info.is_program(&system_program::ID)?;
-    entropy_program.is_program(entropy_program.key)?;
-    entropy_variable.has_owner(entropy_program.key)?;
-    if entropy_variable.data_is_empty() || entropy_variable.executable || fee_treasury.executable {
+    if fee_treasury.executable {
         return Err(ProgramError::InvalidAccountData);
     }
+    validate_entropy_accounts(entropy_program, entropy_variable)?;
 
     let draw_id_bytes = INITIAL_DRAW_ID.to_le_bytes();
     let targets = [
@@ -98,17 +97,19 @@ pub fn process_initialize(
         program_id,
         &[DRAW_SEED, &draw_id_bytes],
     )?;
-    create_registry_bootstrap_account(
+    create_program_account::<PlayerRegistry>(
         player_registry_info,
         system_program_info,
         payer,
         program_id,
         &[PLAYER_REGISTRY_SEED, &draw_id_bytes],
-        FateAccount::PlayerRegistry as u8,
     )?;
 
     let config = config_info.as_account_mut::<Config>(program_id)?;
     let draw = draw_info.as_account_mut::<Draw>(program_id)?;
+    player_registry_info
+        .as_account_mut::<PlayerRegistry>(program_id)?
+        .draw_id = INITIAL_DRAW_ID;
     initialize_genesis_state(
         config,
         draw,
@@ -120,6 +121,27 @@ pub fn process_initialize(
         created_at,
     );
 
+    Ok(())
+}
+
+#[cfg(not(feature = "dev-randomness"))]
+fn validate_entropy_accounts(
+    entropy_program: &AccountInfo<'_>,
+    entropy_variable: &AccountInfo<'_>,
+) -> ProgramResult {
+    entropy_program.is_program(entropy_program.key)?;
+    entropy_variable.has_owner(entropy_program.key)?;
+    if entropy_variable.data_is_empty() || entropy_variable.executable {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "dev-randomness")]
+fn validate_entropy_accounts(
+    _entropy_program: &AccountInfo<'_>,
+    _entropy_variable: &AccountInfo<'_>,
+) -> ProgramResult {
     Ok(())
 }
 

@@ -107,7 +107,7 @@ fate/
   app/                  Next.js application and keeper script (planned)
   api/                  Steel state, instructions, errors, events, and Rust SDK
   program/              Solana instruction handlers
-  tests/                Program integration and invariant tests (planned)
+  program/tests/        SVM and SBF program integration tests
   data-simulation/      Simulator, scenario runner, retained reports, and summaries
   docs/                 Build plan, account model, and randomness gate
   AGENTS.md             Required repository-scoped agent instructions
@@ -145,7 +145,8 @@ Start with fixed-size registries. This bounds account rent, transaction compute,
 
 ## Program Instructions
 
-- [x] `initialize`: create configuration, vault, Staker registry, first draw, and treasury references.
+- [x] `initialize`: create configuration, vault, first draw, treasury references, and registry bootstrap accounts.
+- [x] `grow_program_accounts`: grow the fixed registries within Solana's per-instruction limit and enable the program only after all five ordered steps finish.
 - [x] `deposit_stake`: transfer SOL, mint shares immediately when no funding snapshot exists, or queue SOL for the next draw.
 - [x] `request_stake_withdrawal`: execute during `FUNDING`, update the snapshot and threshold, or queue the request from `ACTIVATED` until settlement.
 - [x] `deposit_player`: create or update one wallet entry, transfer refundable SOL, record boosted weight, and create the first-Player snapshot when needed.
@@ -190,14 +191,16 @@ Live verification on 2026-08-17 found no Entropy program at its declared ID on d
 
 ## Program Tests
 
+The current non-randomness lifecycle runs through the real Solana runtime and the compiled SBF artifact. It covers multi-step genesis, Staker and Player deposits, pending Player refund, immediate and queued Staker withdrawal requests, pause-safe exits, activation, and exact-floor rejection. Entropy-gated lock and settlement coverage remains pending.
+
 - [ ] Test all state transitions and reject transitions from the wrong phase.
 - [ ] Test every instruction's owner, data-length, discriminator, signer, writable/read-only, PDA seed, canonical bump, and stored-relationship validation.
 - [ ] Test reinitialization, pre-funded PDA initialization, duplicate mutable accounts, fake sysvars, substituted CPI programs, and account type cosplay.
 - [ ] Test direct lamport donations cannot change tracked assets, liabilities, shares, thresholds, payouts, or solvency.
 - [ ] Assert tracked custody assets plus rent always cover refunds, withdrawals, and claims after every value-moving instruction.
 - [ ] Test threshold decay at every 10-minute boundary.
-- [ ] Test activation at, below, and above the exact threshold.
-- [ ] Test the larger-of-two activation floor at several Staker TVLs.
+- [x] Test activation at, below, and above the exact threshold.
+- [x] Test the larger-of-two activation floor at several Staker TVLs.
 - [ ] Test deposits immediately before and after snapshot, activation, countdown end, and settlement.
 - [ ] Test one Player, many Players, one Staker, maximum wallets, and repeat deposits from one wallet.
 - [ ] Test wallet aggregation so one wallet can win only once.
@@ -212,6 +215,7 @@ Live verification on 2026-08-17 found no Entropy program at its declared ID on d
 - [ ] Test paused-state exits and locked-draw settlement.
 - [ ] Run randomized invariant tests for lamport conservation and share ownership.
 - [ ] Run `steel test`, `steel build`, and `cargo test-sbf` before devnet deployment.
+  Current non-randomness baseline passes all three; rerun after the Entropy-gated instructions are complete.
 
 
 

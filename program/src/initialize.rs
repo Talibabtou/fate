@@ -83,12 +83,13 @@ pub fn process_initialize(
         program_id,
         &[STAKER_VAULT_SEED],
     )?;
-    create_program_account::<StakerRegistry>(
+    create_registry_bootstrap_account(
         staker_registry_info,
         system_program_info,
         payer,
         program_id,
         &[STAKER_REGISTRY_SEED],
+        FateAccount::StakerRegistry as u8,
     )?;
     create_program_account::<Draw>(
         draw_info,
@@ -97,21 +98,20 @@ pub fn process_initialize(
         program_id,
         &[DRAW_SEED, &draw_id_bytes],
     )?;
-    create_program_account::<PlayerRegistry>(
+    create_registry_bootstrap_account(
         player_registry_info,
         system_program_info,
         payer,
         program_id,
         &[PLAYER_REGISTRY_SEED, &draw_id_bytes],
+        FateAccount::PlayerRegistry as u8,
     )?;
 
     let config = config_info.as_account_mut::<Config>(program_id)?;
     let draw = draw_info.as_account_mut::<Draw>(program_id)?;
-    let player_registry = player_registry_info.as_account_mut::<PlayerRegistry>(program_id)?;
     initialize_genesis_state(
         config,
         draw,
-        player_registry,
         authority.key,
         fee_treasury.key,
         entropy_program.key,
@@ -127,7 +127,6 @@ pub fn process_initialize(
 fn initialize_genesis_state(
     config: &mut Config,
     draw: &mut Draw,
-    player_registry: &mut PlayerRegistry,
     authority: &Pubkey,
     fee_treasury: &Pubkey,
     entropy_program: &Pubkey,
@@ -139,7 +138,7 @@ fn initialize_genesis_state(
     config.fee_treasury = *fee_treasury;
     config.entropy_program = *entropy_program;
     config.entropy_variable = *entropy_variable;
-    config.version = PROGRAM_VERSION;
+    config.version = 0;
     config.paused = 0;
     config.current_draw_id = INITIAL_DRAW_ID;
 
@@ -147,8 +146,19 @@ fn initialize_genesis_state(
     draw.phase = DrawPhase::Funding.into();
     draw.created_at = created_at;
     draw.rent_payer = *rent_payer;
+}
 
-    player_registry.draw_id = INITIAL_DRAW_ID;
+fn create_registry_bootstrap_account<'a, 'info>(
+    target: &'a AccountInfo<'info>,
+    system_program: &'a AccountInfo<'info>,
+    payer: &'a AccountInfo<'info>,
+    owner: &Pubkey,
+    seeds: &[&[u8]],
+    discriminator: u8,
+) -> ProgramResult {
+    allocate_account(target, system_program, payer, 8, owner, seeds)?;
+    target.try_borrow_mut_data()?[0] = discriminator;
+    Ok(())
 }
 
 fn ensure_distinct(accounts: &[&AccountInfo<'_>]) -> ProgramResult {
@@ -176,12 +186,10 @@ mod tests {
         let rent_payer = Pubkey::new_unique();
         let mut config = Config::zeroed();
         let mut draw = Draw::zeroed();
-        let mut player_registry = Box::new(PlayerRegistry::zeroed());
 
         initialize_genesis_state(
             &mut config,
             &mut draw,
-            &mut player_registry,
             &authority,
             &treasury,
             &entropy_program,
@@ -194,13 +202,12 @@ mod tests {
         assert_eq!(config.fee_treasury, treasury);
         assert_eq!(config.entropy_program, entropy_program);
         assert_eq!(config.entropy_variable, entropy_variable);
-        assert_eq!(config.version, PROGRAM_VERSION);
+        assert_eq!(config.version, 0);
         assert!(!config.is_paused());
         assert_eq!(config.current_draw_id, 0);
         assert_eq!(draw.phase(), Some(DrawPhase::Funding));
         assert_eq!(draw.created_at, 123);
         assert_eq!(draw.rent_payer, rent_payer);
-        assert_eq!(player_registry.draw_id, 0);
     }
 
     #[test]

@@ -13,6 +13,7 @@ pub enum FateInstruction {
     Unpause = 7,
     ClaimPlayer = 8,
     ClaimStakeWithdrawal = 9,
+    GrowProgramAccounts = 10,
 }
 
 #[repr(C)]
@@ -63,6 +64,12 @@ pub struct ClaimPlayer {
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct ClaimStakeWithdrawal {}
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct GrowProgramAccounts {
+    pub step: [u8; 8],
+}
+
 instruction!(FateInstruction, Initialize);
 instruction!(FateInstruction, DepositStake);
 instruction!(FateInstruction, RequestStakeWithdrawal);
@@ -73,6 +80,7 @@ instruction!(FateInstruction, Pause);
 instruction!(FateInstruction, Unpause);
 instruction!(FateInstruction, ClaimPlayer);
 instruction!(FateInstruction, ClaimStakeWithdrawal);
+instruction!(FateInstruction, GrowProgramAccounts);
 
 #[cfg(test)]
 mod tests {
@@ -150,5 +158,15 @@ mod tests {
             ClaimStakeWithdrawal {}.to_bytes(),
             [FateInstruction::ClaimStakeWithdrawal as u8]
         );
+    }
+
+    #[test]
+    fn grow_program_accounts_wire_format_is_stable() {
+        let bytes = GrowProgramAccounts {
+            step: 3u64.to_le_bytes(),
+        }
+        .to_bytes();
+        assert_eq!(bytes[0], FateInstruction::GrowProgramAccounts as u8);
+        assert_eq!(&bytes[1..], &3u64.to_le_bytes());
     }
 }

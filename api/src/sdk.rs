@@ -166,6 +166,29 @@ pub fn claim_stake_withdrawal(program_id: Pubkey, staker: Pubkey) -> Instruction
     }
 }
 
+pub fn grow_program_accounts(
+    program_id: Pubkey,
+    payer: Pubkey,
+    authority: Pubkey,
+    step: u64,
+) -> Instruction {
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new(payer, true),
+            AccountMeta::new_readonly(authority, true),
+            AccountMeta::new(config_pda(&program_id).0, false),
+            AccountMeta::new(staker_registry_pda(&program_id).0, false),
+            AccountMeta::new(player_registry_pda(&program_id, 0).0, false),
+            AccountMeta::new_readonly(system_program::ID, false),
+        ],
+        data: GrowProgramAccounts {
+            step: step.to_le_bytes(),
+        }
+        .to_bytes(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,6 +233,29 @@ mod tests {
         );
         assert_eq!(instruction.accounts[10].pubkey, system_program::ID);
         assert_eq!(instruction.data, Initialize {}.to_bytes());
+    }
+
+    #[test]
+    fn grow_builder_targets_the_genesis_registries() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let authority = Pubkey::new_unique();
+        let instruction = grow_program_accounts(program_id, payer, authority, 3);
+
+        assert_eq!(instruction.accounts.len(), 6);
+        assert_eq!(instruction.accounts[0], AccountMeta::new(payer, true));
+        assert_eq!(
+            instruction.accounts[1],
+            AccountMeta::new_readonly(authority, true)
+        );
+        assert_eq!(
+            instruction.accounts[3].pubkey,
+            staker_registry_pda(&program_id).0
+        );
+        assert_eq!(
+            instruction.accounts[4].pubkey,
+            player_registry_pda(&program_id, 0).0
+        );
     }
 
     #[test]

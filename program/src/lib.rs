@@ -6,6 +6,7 @@ mod claim_player;
 mod claim_stake_withdrawal;
 mod deposit_player;
 mod deposit_stake;
+mod grow_program_accounts;
 mod initialize;
 mod refund_player;
 mod request_stake_withdrawal;
@@ -17,6 +18,7 @@ use claim_stake_withdrawal::*;
 use deposit_player::*;
 use deposit_stake::*;
 use fate_api::prelude::*;
+use grow_program_accounts::*;
 use initialize::*;
 use refund_player::*;
 use request_stake_withdrawal::*;
@@ -44,6 +46,9 @@ pub fn process_instruction(
         FateInstruction::ClaimPlayer => process_claim_player(program_id, accounts, data),
         FateInstruction::ClaimStakeWithdrawal => {
             process_claim_stake_withdrawal(program_id, accounts, data)
+        }
+        FateInstruction::GrowProgramAccounts => {
+            process_grow_program_accounts(program_id, accounts, data)
         }
     }
 }

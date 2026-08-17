@@ -65,6 +65,9 @@ pub enum FateError {
 
     #[error("Unbiased selection exhausted its deterministic candidates")]
     SelectionRetriesExhausted = 20,
+
+    #[error("Program account initialization is incomplete or invalid")]
+    InvalidInitializationState = 21,
 }
 
 error!(FateError);

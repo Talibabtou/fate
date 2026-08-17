@@ -18,6 +18,8 @@ Fate uses fixed Steel accounts and one Player custody account per draw. All trac
 
 Initial configuration plus the first draw costs approximately `0.37266624 SOL` in refundable account rent. Each additional live `Draw` and `PlayerRegistry` pair costs approximately `0.08257344 SOL`. Query rent again before deployment because cluster economics can change.
 
+The two registries exceed Solana's 10,240-byte per-instruction account-growth limit. Genesis therefore creates each registry as an 8-byte, program-owned bootstrap account, then the authority runs five ordered `grow_program_accounts` steps. Each step grows by at most 10,240 bytes and funds only the new rent deficit. The fifth step marks `Config.version` ready; normal protocol instructions cannot deserialize or use a partially grown registry.
+
 ## Custody
 
 - `StakerVault` holds Staker SOL plus its own rent reserve. `active_assets_lamports`, `pending_assets_lamports`, and `withdrawal_liability_lamports` never include rent.

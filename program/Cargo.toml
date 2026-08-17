@@ -18,3 +18,8 @@ no-entrypoint = []
 fate-api.workspace = true
 solana-program.workspace = true
 steel.workspace = true
+
+[dev-dependencies]
+solana-program-test = "=2.1.15"
+solana-sdk = "=2.1.15"
+tokio = { version = "1.35", features = ["macros", "rt-multi-thread"] }

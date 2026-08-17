@@ -13,7 +13,7 @@ pub struct StakerVault {
     pub active_assets_lamports: u64,
     pub pending_assets_lamports: u64,
     pub total_shares: u64,
-    pub queued_withdrawal_lamports: u64,
+    pub queued_withdrawal_shares: u64,
     pub lifetime_player_losses_lamports: u64,
     pub lifetime_erosion_lamports: u64,
 }

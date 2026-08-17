@@ -47,6 +47,76 @@ pub fn deposit_stake(program_id: Pubkey, staker: Pubkey, draw_id: u64, amount: u
     }
 }
 
+pub fn request_stake_withdrawal(
+    program_id: Pubkey,
+    staker: Pubkey,
+    draw_id: u64,
+    shares: u64,
+) -> Instruction {
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new(staker, true),
+            AccountMeta::new_readonly(config_pda(&program_id).0, false),
+            AccountMeta::new(draw_pda(&program_id, draw_id).0, false),
+            AccountMeta::new(staker_vault_pda(&program_id).0, false),
+            AccountMeta::new(staker_registry_pda(&program_id).0, false),
+        ],
+        data: RequestStakeWithdrawal {
+            shares: shares.to_le_bytes(),
+        }
+        .to_bytes(),
+    }
+}
+
+pub fn deposit_player(
+    program_id: Pubkey,
+    player: Pubkey,
+    draw_id: u64,
+    amount: u64,
+) -> Instruction {
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new(player, true),
+            AccountMeta::new_readonly(config_pda(&program_id).0, false),
+            AccountMeta::new(draw_pda(&program_id, draw_id).0, false),
+            AccountMeta::new(player_registry_pda(&program_id, draw_id).0, false),
+            AccountMeta::new_readonly(staker_vault_pda(&program_id).0, false),
+            AccountMeta::new_readonly(system_program::ID, false),
+        ],
+        data: DepositPlayer {
+            amount: amount.to_le_bytes(),
+        }
+        .to_bytes(),
+    }
+}
+
+pub fn refund_player(program_id: Pubkey, player: Pubkey, draw_id: u64) -> Instruction {
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new(player, true),
+            AccountMeta::new_readonly(config_pda(&program_id).0, false),
+            AccountMeta::new(draw_pda(&program_id, draw_id).0, false),
+            AccountMeta::new(player_registry_pda(&program_id, draw_id).0, false),
+        ],
+        data: RefundPlayer {}.to_bytes(),
+    }
+}
+
+pub fn activate_draw(program_id: Pubkey, draw_id: u64) -> Instruction {
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new_readonly(config_pda(&program_id).0, false),
+            AccountMeta::new(draw_pda(&program_id, draw_id).0, false),
+            AccountMeta::new(player_registry_pda(&program_id, draw_id).0, false),
+        ],
+        data: ActivateDraw {}.to_bytes(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -110,6 +180,84 @@ mod tests {
         assert_eq!(
             instruction.accounts[4].pubkey,
             staker_registry_pda(&program_id).0
+        );
+    }
+
+    #[test]
+    fn stake_withdrawal_builder_can_update_the_current_draw_snapshot() {
+        let program_id = Pubkey::new_unique();
+        let staker = Pubkey::new_unique();
+        let instruction = request_stake_withdrawal(program_id, staker, 7, 123);
+
+        assert_eq!(instruction.accounts.len(), 5);
+        assert_eq!(instruction.accounts[0], AccountMeta::new(staker, true));
+        assert_eq!(instruction.accounts[1].pubkey, config_pda(&program_id).0);
+        assert!(!instruction.accounts[1].is_writable);
+        assert_eq!(instruction.accounts[2].pubkey, draw_pda(&program_id, 7).0);
+        assert!(instruction.accounts[2].is_writable);
+        assert_eq!(
+            instruction.accounts[3].pubkey,
+            staker_vault_pda(&program_id).0
+        );
+        assert_eq!(
+            instruction.accounts[4].pubkey,
+            staker_registry_pda(&program_id).0
+        );
+    }
+
+    #[test]
+    fn player_deposit_builder_targets_draw_scoped_custody() {
+        let program_id = Pubkey::new_unique();
+        let player = Pubkey::new_unique();
+        let instruction = deposit_player(program_id, player, 7, 123);
+
+        assert_eq!(instruction.accounts.len(), 6);
+        assert_eq!(instruction.accounts[0], AccountMeta::new(player, true));
+        assert_eq!(instruction.accounts[2].pubkey, draw_pda(&program_id, 7).0);
+        assert_eq!(
+            instruction.accounts[3].pubkey,
+            player_registry_pda(&program_id, 7).0
+        );
+        assert!(instruction.accounts[3].is_writable);
+        assert_eq!(
+            instruction.accounts[4].pubkey,
+            staker_vault_pda(&program_id).0
+        );
+        assert!(!instruction.accounts[4].is_writable);
+    }
+
+    #[test]
+    fn player_refund_builder_has_no_pause_or_authority_dependency() {
+        let program_id = Pubkey::new_unique();
+        let player = Pubkey::new_unique();
+        let instruction = refund_player(program_id, player, 7);
+
+        assert_eq!(instruction.accounts.len(), 4);
+        assert_eq!(instruction.accounts[0], AccountMeta::new(player, true));
+        assert_eq!(instruction.accounts[1].pubkey, config_pda(&program_id).0);
+        assert!(!instruction.accounts[1].is_writable);
+        assert_eq!(instruction.accounts[2].pubkey, draw_pda(&program_id, 7).0);
+        assert_eq!(
+            instruction.accounts[3].pubkey,
+            player_registry_pda(&program_id, 7).0
+        );
+    }
+
+    #[test]
+    fn activation_builder_is_permissionless() {
+        let program_id = Pubkey::new_unique();
+        let instruction = activate_draw(program_id, 7);
+
+        assert_eq!(instruction.accounts.len(), 3);
+        assert!(instruction
+            .accounts
+            .iter()
+            .all(|account| !account.is_signer));
+        assert_eq!(instruction.accounts[0].pubkey, config_pda(&program_id).0);
+        assert_eq!(instruction.accounts[1].pubkey, draw_pda(&program_id, 7).0);
+        assert_eq!(
+            instruction.accounts[2].pubkey,
+            player_registry_pda(&program_id, 7).0
         );
     }
 }

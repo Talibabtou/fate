@@ -38,6 +38,21 @@ pub enum FateError {
 
     #[error("Program custody does not cover tracked assets")]
     InsufficientCustody = 11,
+
+    #[error("Staker position does not exist")]
+    StakerPositionNotFound = 12,
+
+    #[error("Withdrawal exceeds available active shares")]
+    WithdrawalExceedsAvailableShares = 13,
+
+    #[error("Deposits are closed for this draw")]
+    DepositsClosed = 14,
+
+    #[error("Player position does not exist")]
+    PlayerPositionNotFound = 15,
+
+    #[error("Player TVL is below the live activation threshold")]
+    ActivationThresholdNotMet = 16,
 }
 
 error!(FateError);

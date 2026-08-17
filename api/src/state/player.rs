@@ -52,6 +52,24 @@ impl PlayerEntry {
         Ok(())
     }
 
+    pub fn add_committed_deposit(
+        &mut self,
+        deposit_lamports: u64,
+        boosted_weight: u128,
+    ) -> Result<(), FateError> {
+        self.committed_deposit_lamports = self
+            .committed_deposit_lamports
+            .checked_add(deposit_lamports)
+            .ok_or(FateError::ArithmeticOverflow)?;
+        self.boosted_weight = U128Value::new(
+            self.boosted_weight
+                .get()
+                .checked_add(boosted_weight)
+                .ok_or(FateError::ArithmeticOverflow)?,
+        );
+        Ok(())
+    }
+
     pub fn refund_pending(&mut self) -> Result<u64, FateError> {
         if self.committed_deposit_lamports != 0 {
             return Err(FateError::PlayerFundsCommitted);
@@ -179,6 +197,16 @@ mod tests {
             Err(FateError::PlayerFundsCommitted)
         );
         assert_eq!(player.refundable_deposit_lamports, 5);
+    }
+
+    #[test]
+    fn countdown_deposit_is_committed_immediately() {
+        let mut player = PlayerEntry::zeroed();
+        player.add_committed_deposit(10, 15).unwrap();
+        player.add_committed_deposit(20, 25).unwrap();
+        assert_eq!(player.refundable_deposit_lamports, 0);
+        assert_eq!(player.committed_deposit_lamports, 30);
+        assert_eq!(player.boosted_weight.get(), 40);
     }
 
     #[test]

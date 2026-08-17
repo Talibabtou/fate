@@ -21,6 +21,7 @@ Initial configuration plus the first draw costs approximately `0.34410240 SOL` i
 ## Custody
 
 - `StakerVault` holds Staker SOL plus its own rent reserve. `active_assets_lamports` and `pending_assets_lamports` never include rent.
+- Queued Staker exits remain represented by shares and are priced only after settlement. They are not an additional lamport liability while those shares remain part of `active_assets_lamports`.
 - Each `PlayerRegistry` holds that draw's refundable deposits, committed deposits, or winner claim plus its rent reserve.
 - `Config`, `StakerRegistry`, and `Draw` hold only their rent reserves.
 - Protocol fees leave custody accounts during settlement and go to the configured fee treasury.

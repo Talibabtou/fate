@@ -5,6 +5,10 @@ use steel::*;
 pub enum FateInstruction {
     Initialize = 0,
     DepositStake = 1,
+    RequestStakeWithdrawal = 2,
+    DepositPlayer = 3,
+    RefundPlayer = 4,
+    ActivateDraw = 5,
 }
 
 #[repr(C)]
@@ -17,8 +21,32 @@ pub struct DepositStake {
     pub amount: [u8; 8],
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct RequestStakeWithdrawal {
+    pub shares: [u8; 8],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct DepositPlayer {
+    pub amount: [u8; 8],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct RefundPlayer {}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct ActivateDraw {}
+
 instruction!(FateInstruction, Initialize);
 instruction!(FateInstruction, DepositStake);
+instruction!(FateInstruction, RequestStakeWithdrawal);
+instruction!(FateInstruction, DepositPlayer);
+instruction!(FateInstruction, RefundPlayer);
+instruction!(FateInstruction, ActivateDraw);
 
 #[cfg(test)]
 mod tests {
@@ -40,5 +68,37 @@ mod tests {
         .to_bytes();
         assert_eq!(bytes[0], FateInstruction::DepositStake as u8);
         assert_eq!(&bytes[1..], &42u64.to_le_bytes());
+    }
+
+    #[test]
+    fn stake_withdrawal_wire_format_is_stable() {
+        let bytes = RequestStakeWithdrawal {
+            shares: 42u64.to_le_bytes(),
+        }
+        .to_bytes();
+        assert_eq!(bytes[0], FateInstruction::RequestStakeWithdrawal as u8);
+        assert_eq!(&bytes[1..], &42u64.to_le_bytes());
+    }
+
+    #[test]
+    fn player_deposit_wire_format_is_stable() {
+        let bytes = DepositPlayer {
+            amount: 42u64.to_le_bytes(),
+        }
+        .to_bytes();
+        assert_eq!(bytes[0], FateInstruction::DepositPlayer as u8);
+        assert_eq!(&bytes[1..], &42u64.to_le_bytes());
+    }
+
+    #[test]
+    fn player_refund_wire_format_is_stable() {
+        let bytes = RefundPlayer {}.to_bytes();
+        assert_eq!(bytes, [FateInstruction::RefundPlayer as u8]);
+    }
+
+    #[test]
+    fn activate_draw_wire_format_is_stable() {
+        let bytes = ActivateDraw {}.to_bytes();
+        assert_eq!(bytes, [FateInstruction::ActivateDraw as u8]);
     }
 }

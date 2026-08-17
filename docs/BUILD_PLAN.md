@@ -63,8 +63,8 @@ These items must be resolved before the custody program is implemented.
 
 - [x] Convert every percentage to integer basis points or parts per million. Never calculate payouts with floating point on-chain.
 - [x] Define a single rounding policy: all divisions round down, and remaining lamports go to the protocol treasury.
-- [ ] Calculate activation from the immutable Staker TVL snapshot and first-Player timestamp.
-- [ ] Calculate the threshold as:
+- [x] Calculate activation from the immutable Staker TVL snapshot and first-Player timestamp.
+- [x] Calculate the threshold as:
   ```text
   initial = 1% * staker_tvl_snapshot
   steps = floor(elapsed_seconds / 600)
@@ -73,7 +73,7 @@ These items must be resolved before the custody program is implemented.
   active_threshold = max(floor, decayed)
   ```
 
-- [ ] Store each Player deposit's boosted weight at deposit time.
+- [x] Store each Player deposit's boosted weight at deposit time.
 - [x] Use `u128` intermediates for weights, shares, fee calculations, and proportional payouts.
 - [x] Define the early boost with integer math and cap it between `1.00x` and `1.50x`.
 - [x] Define Player payout, Staker payout, erosion, fee, and dust formulas as executable test vectors.
@@ -129,7 +129,7 @@ fate/
 Start with fixed-size registries. This bounds account rent, transaction compute, and winner-selection work. Unlimited participants would require a sum tree, proofs, and more state-management code before the product has users.
 
 - [x] Define `Config` with authority, fee treasury, pause state, current draw ID, and program version.
-- [x] Define `StakerVault` with active assets, pending assets, total shares, and queued withdrawal value.
+- [x] Define `StakerVault` with active assets, pending assets, total shares, and queued withdrawal shares.
 - [x] Define a fixed `StakerRegistry` with at most 512 wallet entries.
 - [x] Define one persistent Staker entry per wallet inside the registry with active shares, pending deposit, queued withdrawal, and status.
 - [x] Define `Draw` with state, timestamps, snapshots, threshold data, Player totals, Entropy reference, result, fee, erosion, winner, and claim state.
@@ -147,12 +147,12 @@ Start with fixed-size registries. This bounds account rent, transaction compute,
 
 - [x] `initialize`: create configuration, vault, Staker registry, first draw, and treasury references.
 - [x] `deposit_stake`: transfer SOL, mint shares immediately when no funding snapshot exists, or queue SOL for the next draw.
-- [ ] `request_stake_withdrawal`: execute during `FUNDING`, update the snapshot and threshold, or queue the request from `ACTIVATED` until settlement.
-- [ ] `deposit_player`: create or update one wallet entry, transfer refundable SOL, record boosted weight, and create the first-Player snapshot when needed.
-- [ ] `refund_player`: return the wallet's full pending position before activation and clear its Player entry.
-- [ ] Reset the funding clock and snapshot if every Player refunds before activation.
-- [ ] `activate_draw`: verify the live decayed threshold and start the five-minute countdown.
-- [ ] Treat every Player deposit during countdown as committed immediately.
+- [x] `request_stake_withdrawal`: execute during `FUNDING`, update the snapshot and threshold, or queue the request from `ACTIVATED` until settlement.
+- [x] `deposit_player`: create or update one wallet entry, transfer refundable SOL, record boosted weight, and create the first-Player snapshot when needed.
+- [x] `refund_player`: return the wallet's full pending position before activation and clear its Player entry.
+- [x] Reset the funding clock and snapshot if every Player refunds before activation.
+- [x] `activate_draw`: verify the live decayed threshold and start the five-minute countdown.
+- [x] Treat every Player deposit during countdown as committed immediately.
 - [ ] `lock_draw`: close deposits after countdown and bind the draw to its Entropy request.
 - [ ] `settle_draw`: consume finalized Entropy, select one side, select exactly one wallet, calculate payouts, and make the result immutable.
 - [ ] On a Player win, move the full payout into the winner's claimable balance.

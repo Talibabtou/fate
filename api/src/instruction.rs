@@ -16,6 +16,8 @@ pub enum FateInstruction {
     GrowProgramAccounts = 10,
     LockDraw = 11,
     SettleDrawDev = 12,
+    ClosePlayerRegistry = 13,
+    CloseDraw = 14,
 }
 
 #[repr(C)]
@@ -82,6 +84,18 @@ pub struct LockDraw {}
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct SettleDrawDev {}
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct ClosePlayerRegistry {
+    pub draw_id: [u8; 8],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct CloseDraw {
+    pub draw_id: [u8; 8],
+}
+
 instruction!(FateInstruction, Initialize);
 instruction!(FateInstruction, DepositStake);
 instruction!(FateInstruction, RequestStakeWithdrawal);
@@ -95,6 +109,8 @@ instruction!(FateInstruction, ClaimStakeWithdrawal);
 instruction!(FateInstruction, GrowProgramAccounts);
 instruction!(FateInstruction, LockDraw);
 instruction!(FateInstruction, SettleDrawDev);
+instruction!(FateInstruction, ClosePlayerRegistry);
+instruction!(FateInstruction, CloseDraw);
 
 #[cfg(test)]
 mod tests {
@@ -191,5 +207,28 @@ mod tests {
             SettleDrawDev {}.to_bytes(),
             [FateInstruction::SettleDrawDev as u8]
         );
+    }
+
+    #[test]
+    fn storage_cleanup_wire_formats_are_stable() {
+        for (bytes, discriminator) in [
+            (
+                ClosePlayerRegistry {
+                    draw_id: 42u64.to_le_bytes(),
+                }
+                .to_bytes(),
+                FateInstruction::ClosePlayerRegistry as u8,
+            ),
+            (
+                CloseDraw {
+                    draw_id: 42u64.to_le_bytes(),
+                }
+                .to_bytes(),
+                FateInstruction::CloseDraw as u8,
+            ),
+        ] {
+            assert_eq!(bytes[0], discriminator);
+            assert_eq!(&bytes[1..], &42u64.to_le_bytes());
+        }
     }
 }

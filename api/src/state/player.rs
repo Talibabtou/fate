@@ -120,6 +120,14 @@ pub struct PlayerRegistry {
 }
 
 impl PlayerRegistry {
+    pub fn is_empty(&self) -> bool {
+        self.occupied_entries == 0
+            && self
+                .entries
+                .iter()
+                .all(|entry| *entry == PlayerEntry::zeroed())
+    }
+
     pub fn find_index(&self, authority: &Pubkey) -> Option<usize> {
         self.entries
             .iter()
@@ -233,5 +241,13 @@ mod tests {
             registry.get_or_insert(Pubkey::new_unique()),
             Err(FateError::RegistryFull)
         );
+    }
+
+    #[test]
+    fn empty_registry_requires_zeroed_entries_and_count() {
+        let mut registry = Box::new(PlayerRegistry::zeroed());
+        assert!(registry.is_empty());
+        registry.entries[0].claimed_lamports = 1;
+        assert!(!registry.is_empty());
     }
 }

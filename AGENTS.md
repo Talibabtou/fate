@@ -107,7 +107,7 @@ Benchmark maximum-capacity settlement before fixing these values. Lower them if 
 
 ## Immediate Work Order
 
-1. Finish adversarial tests, invariant coverage, maximum-capacity benchmarks, and bounded rent recovery for the deterministic Steel program.
+1. Finish adversarial tests, invariant coverage, and maximum-capacity benchmarks for the deterministic Steel program.
 2. Run the keeper and complete custody loop on localnet, then deploy the feature-gated deterministic artifact to devnet.
 3. Build the Next.js app against confirmed localnet/devnet state and exercise the full wallet flow.
 4. Run long devnet batches and compare balances and outcomes with the simulator.

@@ -140,7 +140,7 @@ Start with fixed-size registries. This bounds account rent, transaction compute,
 - [x] Store the ten latest settled draw IDs in a fixed ring buffer in `Config`.
 - [x] Derive every PDA from fixed prefixes and explicit IDs.
 - [x] Calculate account rent and publish it in the technical notes.
-- [ ] Bound long-term rent by closing each `PlayerRegistry` as soon as its liabilities are zero and each `Draw` after it leaves the ten-result history window; return rent only to the recorded payer.
+- [x] Bound long-term rent by closing each `PlayerRegistry` as soon as its liabilities are zero and each `Draw` after it leaves the ten-result history window; return rent only to the recorded payer.
 - [ ] Benchmark 512 Stakers and 116 Players against Solana compute limits.
 - [ ] Freeze or lower capacities only after the maximum-settlement benchmark demonstrates an acceptable safety margin.
 
@@ -169,7 +169,7 @@ Start with fixed-size registries. This bounds account rent, transaction compute,
 - [x] `pause`: stop new deposits and activation.
 - [x] `unpause`: reopen new deposits and activation.
 - [x] Ensure pause never blocks pending Player refunds, Staker exits, locked-draw settlement, or claims.
-- [ ] Add permissionless storage cleanup that closes a liability-free `PlayerRegistry` and an expired `Draw` only after its history-retention window, returning rent to the recorded payer.
+- [x] Add permissionless storage cleanup that closes a liability-free `PlayerRegistry` and an expired `Draw` only after its history-retention window, returning rent to the recorded payer.
 - [ ] Emit compact events for deposits, refunds, activation, lock, settlement, queued Staker actions, claims, and pause changes.
 
 
@@ -194,7 +194,7 @@ Verification on 2026-08-17 found no Entropy program at its declared ID on devnet
 
 ## Program Tests
 
-The lifecycle runs through the real Solana runtime. It covers multi-step genesis, Staker and Player deposits, pending Player refund, immediate and queued Staker withdrawal requests, pause-safe exits, activation, exact-floor rejection, countdown locking, both settlement sides, custody transfers, history updates, and creation of following draws. Mainnet Entropy account/CPI validation remains pending.
+The lifecycle runs through the real Solana runtime. It covers multi-step genesis, Staker and Player deposits, pending Player refund, immediate and queued Staker withdrawal requests, pause-safe exits, activation, exact-floor rejection, countdown locking, twelve alternating settlements, custody transfers, claims, history rollover, exact rent refunds, storage closure, and creation of following draws. Mainnet Entropy account/CPI validation remains pending.
 
 - [ ] Test all state transitions and reject transitions from the wrong phase.
 - [ ] Test every instruction's owner, data-length, discriminator, signer, writable/read-only, PDA seed, canonical bump, and stored-relationship validation.
@@ -215,7 +215,7 @@ The lifecycle runs through the real Solana runtime. It covers multi-step genesis
 - [ ] Test malformed, substituted, duplicate, non-writable, and incorrectly owned accounts.
 - [ ] Test unauthorized administration and false Entropy accounts.
 - [ ] Test double settlement, double claim, replay, stale draw IDs, and stale randomness.
-- [ ] Test expired-account closure cannot strand refunds or claims, close a recent draw, redirect rent, or close twice.
+- [x] Test expired-account closure cannot strand refunds or claims, close a recent draw, redirect rent, or close twice.
 - [x] Test paused-state exits and locked-draw settlement.
 - [ ] Run randomized invariant tests for lamport conservation and share ownership.
 - [x] Run `steel test`, `steel build`, and `cargo test-sbf` for the deterministic devnet baseline.
@@ -235,7 +235,7 @@ The keeper is a small script, not a service platform. State transitions remain c
 - [x] Do not add an on-chain caller reward in v1.
 - [x] Make every keeper action idempotent and harmless when another caller wins the race.
 - [x] Log transaction signature, draw ID, attempted transition, and error locally without user tracking.
-- [ ] Close eligible registry/draw storage and confirm recovered rent returns to the recorded payer before funding another long-running test batch.
+- [x] Close eligible registry/draw storage and confirm recovered rent returns to the recorded payer before funding another long-running test batch.
 
 
 

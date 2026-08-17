@@ -71,6 +71,12 @@ pub enum FateError {
 
     #[error("The draw countdown is still active")]
     CountdownActive = 22,
+
+    #[error("Draw storage is not eligible for closure")]
+    StorageNotClosable = 23,
+
+    #[error("The rent refund recipient does not match the recorded payer")]
+    InvalidRentRecipient = 24,
 }
 
 error!(FateError);

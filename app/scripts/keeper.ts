@@ -1,15 +1,22 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { type Address, address, createClient } from "@solana/kit";
+import { type Address, address, createClient, type Instruction } from "@solana/kit";
 import { solanaRpc } from "@solana/kit-plugin-rpc";
 import { signerFromFile } from "@solana/kit-plugin-signer";
 import {
+  type CleanupAction,
+  cleanupInstruction,
+  DRAW_SIZE,
+  DrawPhase,
   decodeConfig,
   decodeDraw,
+  decodePlayerRegistry,
   dueAction,
   fateAddresses,
   type KeeperAction,
   keeperInstruction,
+  PLAYER_REGISTRY_SIZE,
+  RECENT_DRAW_CAPACITY,
 } from "./fate-client.ts";
 
 const DEVNET_GENESIS_HASH = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
@@ -116,6 +123,12 @@ async function createKeeperClient(config: KeeperConfig) {
 
 type KeeperClient = Awaited<ReturnType<typeof createKeeperClient>>;
 
+type CleanupCandidate = {
+  action: CleanupAction;
+  drawId: bigint;
+  rentPayer: Address;
+};
+
 async function main() {
   loadLocalEnvironment();
   const config = parseConfig();
@@ -166,14 +179,21 @@ async function main() {
       const blockTime = await client.rpc.getBlockTime(slot).send();
       if (blockTime === null) throw new Error(`block time unavailable for slot ${slot}`);
       const action = dueAction(fateConfig, draw, blockTime);
+      const cleanup = action
+        ? null
+        : await findCleanupCandidate(client, config.programAddress, fateConfig);
 
-      if (!action) {
+      if (!action && !cleanup) {
         if (config.once) {
           log("no_action_due", { drawId: draw.id.toString(), phase: draw.phase });
           return;
         }
       } else if (config.observeOnly) {
-        log("action_due", { action, drawId: draw.id.toString(), phase: draw.phase });
+        log("action_due", {
+          action: action ?? cleanup?.action,
+          drawId: (action ? draw.id : cleanup?.drawId)?.toString(),
+          phase: action ? draw.phase : undefined,
+        });
         if (config.once) return;
       } else {
         if (action === "settle") {
@@ -184,29 +204,65 @@ async function main() {
             );
           }
         }
-        const instruction = await keeperInstruction(
-          action,
-          config.programAddress,
-          client.payer.address,
-          fateConfig,
-        );
-        log("transition_submitting", { action, drawId: draw.id.toString() });
+        const submittedAction = action ?? cleanup?.action;
+        const submittedDrawId = action ? draw.id : cleanup?.drawId;
+        if (!submittedAction || submittedDrawId === undefined) {
+          throw new Error("keeper selected an invalid action");
+        }
+        let instruction: Instruction;
+        if (action) {
+          instruction = await keeperInstruction(
+            action,
+            config.programAddress,
+            client.payer.address,
+            fateConfig,
+          );
+        } else {
+          if (!cleanup) throw new Error("keeper cleanup selection disappeared");
+          instruction = await cleanupInstruction(
+            cleanup.action,
+            config.programAddress,
+            cleanup.rentPayer,
+            cleanup.drawId,
+          );
+        }
+        log("transition_submitting", {
+          action: submittedAction,
+          drawId: submittedDrawId.toString(),
+        });
         try {
           // The RPC executor first simulates to estimate resource limits. A failed
           // simulation prevents submission; successful transactions are confirmed.
           const result = await client.sendTransaction([instruction]);
           log("transition_confirmed", {
-            action,
-            drawId: draw.id.toString(),
+            action: submittedAction,
+            drawId: submittedDrawId.toString(),
             signature: result.context.signature,
           });
         } catch (sendError) {
-          if (!(await transitionAlreadyApplied(client, config.programAddress, draw.id, action))) {
+          let alreadyApplied: boolean;
+          if (action) {
+            alreadyApplied = await transitionAlreadyApplied(
+              client,
+              config.programAddress,
+              draw.id,
+              action,
+            );
+          } else {
+            if (!cleanup) throw new Error("keeper cleanup selection disappeared");
+            alreadyApplied = await cleanupAlreadyApplied(
+              client,
+              config.programAddress,
+              cleanup.drawId,
+              cleanup.action,
+            );
+          }
+          if (!alreadyApplied) {
             throw sendError;
           }
           log("transition_won_by_another_caller", {
-            action,
-            drawId: draw.id.toString(),
+            action: submittedAction,
+            drawId: submittedDrawId.toString(),
           });
         }
         if (config.once) return;
@@ -220,6 +276,85 @@ async function main() {
       await delay(Math.min(30_000, config.pollMs * 2 ** Math.min(failures, 4)));
     }
   }
+}
+
+async function findCleanupCandidate(
+  client: KeeperClient,
+  programAddress: Address,
+  config: ReturnType<typeof decodeConfig>,
+): Promise<CleanupCandidate | null> {
+  const registries = await client.rpc
+    .getProgramAccounts(programAddress, {
+      commitment: "confirmed",
+      encoding: "base64",
+      filters: [{ dataSize: BigInt(PLAYER_REGISTRY_SIZE) }],
+    })
+    .send();
+  const emptyRegistries = registries
+    .flatMap((account) => {
+      try {
+        const registry = decodePlayerRegistry(decodeRpcData(account.account.data));
+        return registry.isEmpty ? [registry] : [];
+      } catch {
+        return [];
+      }
+    })
+    .sort((left, right) => (left.drawId < right.drawId ? -1 : left.drawId > right.drawId ? 1 : 0));
+
+  for (const registry of emptyRegistries) {
+    const drawAddress = (await fateAddresses(programAddress, registry.drawId)).draw;
+    const response = await client.rpc
+      .getAccountInfo(drawAddress, { commitment: "confirmed", encoding: "base64" })
+      .send();
+    if (!response.value || response.value.owner !== programAddress) continue;
+    const draw = decodeDraw(decodeRpcData(response.value.data));
+    if (
+      draw.id === registry.drawId &&
+      (draw.phase === DrawPhase.Settled || draw.phase === DrawPhase.Voided) &&
+      draw.playerTvlLamports === 0n &&
+      draw.outstandingPlayerClaimLamports === 0n &&
+      draw.id < config.currentDrawId
+    ) {
+      return { action: "close-registry", drawId: draw.id, rentPayer: draw.rentPayer };
+    }
+  }
+
+  const draws = await client.rpc
+    .getProgramAccounts(programAddress, {
+      commitment: "confirmed",
+      encoding: "base64",
+      filters: [{ dataSize: BigInt(DRAW_SIZE) }],
+    })
+    .send();
+  const recent = new Set(config.recentDrawIds);
+  const expired = draws
+    .flatMap((account) => {
+      try {
+        return [decodeDraw(decodeRpcData(account.account.data))];
+      } catch {
+        return [];
+      }
+    })
+    .filter(
+      (candidate) =>
+        (candidate.phase === DrawPhase.Settled || candidate.phase === DrawPhase.Voided) &&
+        candidate.playerTvlLamports === 0n &&
+        candidate.outstandingPlayerClaimLamports === 0n &&
+        config.currentDrawId - candidate.id > RECENT_DRAW_CAPACITY &&
+        !recent.has(candidate.id),
+    )
+    .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
+
+  for (const draw of expired) {
+    const registryAddress = (await fateAddresses(programAddress, draw.id)).players;
+    const response = await client.rpc
+      .getAccountInfo(registryAddress, { commitment: "confirmed", encoding: "base64" })
+      .send();
+    if (!response.value) {
+      return { action: "close-draw", drawId: draw.id, rentPayer: draw.rentPayer };
+    }
+  }
+  return null;
 }
 
 async function transitionAlreadyApplied(
@@ -243,6 +378,20 @@ async function transitionAlreadyApplied(
   if (!drawResponse.value || drawResponse.value.owner !== programAddress) return false;
   const draw = decodeDraw(decodeRpcData(drawResponse.value.data));
   return action === "activate" ? draw.phase >= 1 : draw.phase >= 2;
+}
+
+async function cleanupAlreadyApplied(
+  client: KeeperClient,
+  programAddress: Address,
+  drawId: bigint,
+  action: CleanupAction,
+) {
+  const addresses = await fateAddresses(programAddress, drawId);
+  const addressToCheck = action === "close-registry" ? addresses.players : addresses.draw;
+  const response = await client.rpc
+    .getAccountInfo(addressToCheck, { commitment: "confirmed", encoding: "base64" })
+    .send();
+  return response.value === null;
 }
 
 function delay(milliseconds: number) {

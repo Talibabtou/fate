@@ -1,16 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { address, getAddressEncoder } from "@solana/kit";
+import { AccountRole, address, getAddressEncoder } from "@solana/kit";
 import {
   activationThreshold,
   CONFIG_DISCRIMINATOR,
   CONFIG_SIZE,
+  cleanupInstruction,
   DRAW_DISCRIMINATOR,
   DRAW_SIZE,
   DrawPhase,
   decodeConfig,
   decodeDraw,
+  decodePlayerRegistry,
   dueAction,
+  PLAYER_REGISTRY_DISCRIMINATOR,
+  PLAYER_REGISTRY_SIZE,
 } from "./fate-client.ts";
 
 function setU64(data: Uint8Array, offset: number, value: bigint) {
@@ -28,29 +32,49 @@ test("decodes validated Steel config and draw layouts", () => {
   configData.set(getAddressEncoder().encode(treasury), 40);
   setU64(configData, 136, 1n);
   setU64(configData, 152, 7n);
+  setU64(configData, 160, 2n);
+  setU64(configData, 168, 2n);
+  setU64(configData, 176, 5n);
+  setU64(configData, 184, 6n);
   assert.deepEqual(decodeConfig(configData), {
     feeTreasury: treasury,
     version: 1n,
     paused: false,
     currentDrawId: 7n,
+    recentDrawIds: [6n, 5n],
   });
 
   const drawData = new Uint8Array(DRAW_SIZE);
   drawData[0] = DRAW_DISCRIMINATOR;
+  drawData.set(getAddressEncoder().encode(treasury), 72);
   setU64(drawData, 136, 7n);
   setU64(drawData, 144, BigInt(DrawPhase.Activated));
   setI64(drawData, 160, 100n);
   setI64(drawData, 176, 500n);
   setU64(drawData, 192, 1_000_000_000n);
   setU64(drawData, 216, 100_000_000n);
+  setU64(drawData, 280, 50_000_000n);
   assert.deepEqual(decodeDraw(drawData), {
+    rentPayer: treasury,
     id: 7n,
     phase: DrawPhase.Activated,
     firstPlayerAt: 100n,
     locksAt: 500n,
     stakerTvlSnapshot: 1_000_000_000n,
     playerTvlLamports: 100_000_000n,
+    outstandingPlayerClaimLamports: 50_000_000n,
   });
+
+  const registryData = new Uint8Array(PLAYER_REGISTRY_SIZE);
+  registryData[0] = PLAYER_REGISTRY_DISCRIMINATOR;
+  setU64(registryData, 8, 7n);
+  assert.deepEqual(decodePlayerRegistry(registryData), {
+    drawId: 7n,
+    occupiedEntries: 0n,
+    isEmpty: true,
+  });
+  registryData[24] = 1;
+  assert.equal(decodePlayerRegistry(registryData).isEmpty, false);
 });
 
 test("rejects account cosplay and malformed lengths", () => {
@@ -66,14 +90,17 @@ test("keeper chooses only due permissionless transitions", () => {
     version: 1n,
     paused: false,
     currentDrawId: 7n,
+    recentDrawIds: [],
   };
   const draw = {
+    rentPayer: address("11111111111111111111111111111111"),
     id: 7n,
     phase: DrawPhase.Funding,
     firstPlayerAt: 1_000n,
     locksAt: 0n,
     stakerTvlSnapshot: 100_000_000_000n,
     playerTvlLamports: 1_000_000_000n,
+    outstandingPlayerClaimLamports: 0n,
   };
   assert.equal(dueAction(config, draw, 1_000n), "activate");
   assert.equal(dueAction({ ...config, paused: true }, draw, 1_000n), null);
@@ -86,6 +113,26 @@ test("keeper chooses only due permissionless transitions", () => {
     "lock",
   );
   assert.equal(dueAction(config, { ...draw, phase: DrawPhase.Locked }, 2_000n), "settle");
+});
+
+test("cleanup instructions are permissionless and bind the draw ID", async () => {
+  const programAddress = address("1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM");
+  const rentPayer = address("11111111111111111111111111111111");
+  for (const [action, discriminator] of [
+    ["close-registry", 13],
+    ["close-draw", 14],
+  ] as const) {
+    const instruction = await cleanupInstruction(action, programAddress, rentPayer, 7n);
+    const data = instruction.data;
+    assert.ok(data);
+    assert.equal(data[0], discriminator);
+    assert.equal(new DataView(data.buffer).getBigUint64(1, true), 7n);
+    assert.equal(
+      instruction.accounts?.some((account) => account.role === AccountRole.WRITABLE_SIGNER),
+      false,
+    );
+    assert.equal(instruction.accounts?.[3].address, rentPayer);
+  }
 });
 
 test("activation threshold matches the on-chain floor and decay", () => {

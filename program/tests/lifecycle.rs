@@ -9,7 +9,7 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     transaction::Transaction,
 };
-use steel::AccountDeserialize;
+use steel::{AccountDeserialize, Discriminator, Zeroable};
 
 const SOL: u64 = 1_000_000_000;
 
@@ -147,8 +147,10 @@ async fn dev_draw_loop_settles_both_sides_and_creates_each_next_draw() {
     let mut fixture = TestFixture::start().await;
     let staker = Keypair::new();
     let player = Keypair::new();
+    let draw_rent_payer = Keypair::new();
     fixture.fund(&staker.pubkey(), 4 * SOL).await;
     fixture.fund(&player.pubkey(), 2 * SOL).await;
+    fixture.fund(&draw_rent_payer.pubkey(), 2 * SOL).await;
 
     process_instruction(
         &mut fixture.context,
@@ -158,7 +160,15 @@ async fn dev_draw_loop_settles_both_sides_and_creates_each_next_draw() {
     .await
     .unwrap();
 
-    for (draw_id, expected_side) in [(0, WinnerSide::Player), (1, WinnerSide::Staker)] {
+    let wrong_rent_recipient = Keypair::new();
+    fixture.fund(&wrong_rent_recipient.pubkey(), SOL).await;
+
+    for draw_id in 0..12 {
+        let expected_side = if draw_id % 2 == 0 {
+            WinnerSide::Player
+        } else {
+            WinnerSide::Staker
+        };
         process_instruction(
             &mut fixture.context,
             deposit_player(fixture.program_id, player.pubkey(), draw_id, 100_000_000),
@@ -166,6 +176,13 @@ async fn dev_draw_loop_settles_both_sides_and_creates_each_next_draw() {
         )
         .await
         .unwrap();
+        assert!(process_instruction(
+            &mut fixture.context,
+            close_player_registry(fixture.program_id, wrong_rent_recipient.pubkey(), draw_id,),
+            &[],
+        )
+        .await
+        .is_err());
         process_instruction(
             &mut fixture.context,
             activate_draw(fixture.program_id, draw_id),
@@ -197,11 +214,15 @@ async fn dev_draw_loop_settles_both_sides_and_creates_each_next_draw() {
         )
         .await
         .unwrap();
-        let payer = fixture.context.payer.pubkey();
         process_instruction(
             &mut fixture.context,
-            settle_draw_dev(fixture.program_id, payer, fixture.fee_treasury, draw_id),
-            &[],
+            settle_draw_dev(
+                fixture.program_id,
+                draw_rent_payer.pubkey(),
+                fixture.fee_treasury,
+                draw_id,
+            ),
+            &[&draw_rent_payer],
         )
         .await
         .unwrap();
@@ -213,6 +234,118 @@ async fn dev_draw_loop_settles_both_sides_and_creates_each_next_draw() {
         assert_eq!(settled.phase(), Some(DrawPhase::Settled));
         assert_eq!(settled.winner_side(), Some(expected_side));
         assert_eq!(settled.entropy_sample_valid, 1);
+
+        let payer = settled.rent_payer;
+        if expected_side == WinnerSide::Player {
+            assert!(process_instruction(
+                &mut fixture.context,
+                close_player_registry(fixture.program_id, wrong_rent_recipient.pubkey(), draw_id,),
+                &[],
+            )
+            .await
+            .is_err());
+            process_instruction(
+                &mut fixture.context,
+                claim_player(fixture.program_id, player.pubkey(), draw_id),
+                &[&player],
+            )
+            .await
+            .unwrap();
+        }
+        if draw_id == 0 {
+            assert!(process_instruction(
+                &mut fixture.context,
+                close_player_registry(fixture.program_id, wrong_rent_recipient.pubkey(), draw_id,),
+                &[],
+            )
+            .await
+            .is_err());
+        }
+        let registry_lamports = fixture
+            .account(player_registry_pda(&fixture.program_id, draw_id).0)
+            .await
+            .lamports;
+        let recipient_before = fixture
+            .context
+            .banks_client
+            .get_balance(payer)
+            .await
+            .unwrap();
+        process_instruction(
+            &mut fixture.context,
+            close_player_registry(fixture.program_id, payer, draw_id),
+            &[],
+        )
+        .await
+        .unwrap_or_else(|error| panic!("failed to close registry for draw {draw_id}: {error:?}"));
+        let recipient_after = fixture
+            .context
+            .banks_client
+            .get_balance(payer)
+            .await
+            .unwrap();
+        if payer == fixture.context.payer.pubkey() {
+            assert!(recipient_after > recipient_before);
+        } else {
+            assert_eq!(recipient_after - recipient_before, registry_lamports);
+        }
+        assert!(fixture
+            .context
+            .banks_client
+            .get_account(player_registry_pda(&fixture.program_id, draw_id).0)
+            .await
+            .unwrap()
+            .is_none());
+        assert!(process_instruction(
+            &mut fixture.context,
+            close_player_registry(fixture.program_id, wrong_rent_recipient.pubkey(), draw_id,),
+            &[],
+        )
+        .await
+        .is_err());
+
+        if draw_id == 0 {
+            assert!(process_instruction(
+                &mut fixture.context,
+                close_draw(fixture.program_id, payer, draw_id),
+                &[],
+            )
+            .await
+            .is_err());
+        }
+        if draw_id >= RECENT_DRAW_CAPACITY as u64 {
+            let expired_draw_id = draw_id - RECENT_DRAW_CAPACITY as u64;
+            let expired_rent_payer = if expired_draw_id == 0 {
+                fixture.context.payer.pubkey()
+            } else {
+                draw_rent_payer.pubkey()
+            };
+            process_instruction(
+                &mut fixture.context,
+                close_draw(fixture.program_id, expired_rent_payer, expired_draw_id),
+                &[],
+            )
+            .await
+            .unwrap();
+            assert!(fixture
+                .context
+                .banks_client
+                .get_account(draw_pda(&fixture.program_id, expired_draw_id).0)
+                .await
+                .unwrap()
+                .is_none());
+            assert!(process_instruction(
+                &mut fixture.context,
+                close_draw(
+                    fixture.program_id,
+                    wrong_rent_recipient.pubkey(),
+                    expired_draw_id,
+                ),
+                &[],
+            )
+            .await
+            .is_err());
+        }
 
         let next_id = draw_id + 1;
         let next_account = fixture
@@ -232,9 +365,19 @@ async fn dev_draw_loop_settles_both_sides_and_creates_each_next_draw() {
 
     let config_account = fixture.account(config_pda(&fixture.program_id).0).await;
     let config = read_account::<Config>(&config_account);
-    assert_eq!(config.current_draw_id, 2);
-    assert_eq!(config.recent_draw_count, 2);
-    assert_eq!(&config.recent_draws_newest_first()[..2], &[1, 0]);
+    assert_eq!(config.current_draw_id, 12);
+    assert_eq!(config.recent_draw_count, 10);
+    assert_eq!(
+        config.recent_draws_newest_first(),
+        [11, 10, 9, 8, 7, 6, 5, 4, 3, 2]
+    );
+    assert!(fixture
+        .context
+        .banks_client
+        .get_account(draw_pda(&fixture.program_id, 2).0)
+        .await
+        .unwrap()
+        .is_some());
 }
 
 async fn process_instruction(
@@ -252,6 +395,106 @@ async fn process_instruction(
         blockhash,
     );
     context.banks_client.process_transaction(transaction).await
+}
+
+#[tokio::test]
+async fn expired_storage_closes_in_the_production_artifact_and_refunds_recorded_rent() {
+    let program_id = Pubkey::new_unique();
+    let rent_payer = Pubkey::new_unique();
+    let draw_id = 0;
+    let registry_lamports = 80_000_000;
+    let draw_lamports = 4_000_000;
+
+    let mut config = Config {
+        version: PROGRAM_VERSION,
+        current_draw_id: 12,
+        ..Config::zeroed()
+    };
+    for settled_draw_id in 0..12 {
+        config.push_recent_draw(settled_draw_id);
+    }
+    let draw = Draw {
+        id: draw_id,
+        phase: DrawPhase::Settled.into(),
+        rent_payer,
+        ..Draw::zeroed()
+    };
+    let registry = PlayerRegistry {
+        draw_id,
+        ..PlayerRegistry::zeroed()
+    };
+
+    let mut test = ProgramTest::new("fate", program_id, processor!(fate::process_instruction));
+    test.add_account(
+        config_pda(&program_id).0,
+        program_account(program_id, Config::SIZE, config, 3_000_000),
+    );
+    test.add_account(
+        draw_pda(&program_id, draw_id).0,
+        program_account(program_id, Draw::SIZE, draw, draw_lamports),
+    );
+    test.add_account(
+        player_registry_pda(&program_id, draw_id).0,
+        program_account(
+            program_id,
+            PlayerRegistry::SIZE,
+            registry,
+            registry_lamports,
+        ),
+    );
+    test.add_account(
+        rent_payer,
+        Account {
+            lamports: SOL,
+            data: vec![],
+            owner: solana_program::system_program::ID,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    let mut context = test.start_with_context().await;
+
+    let balance_before = context.banks_client.get_balance(rent_payer).await.unwrap();
+    process_instruction(
+        &mut context,
+        close_player_registry(program_id, rent_payer, draw_id),
+        &[],
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        context.banks_client.get_balance(rent_payer).await.unwrap() - balance_before,
+        registry_lamports
+    );
+
+    let balance_before = context.banks_client.get_balance(rent_payer).await.unwrap();
+    process_instruction(
+        &mut context,
+        close_draw(program_id, rent_payer, draw_id),
+        &[],
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        context.banks_client.get_balance(rent_payer).await.unwrap() - balance_before,
+        draw_lamports
+    );
+}
+
+fn program_account<T>(program_id: Pubkey, size: usize, value: T, lamports: u64) -> Account
+where
+    T: AccountDeserialize + Discriminator + Copy,
+{
+    let mut data = vec![0; size];
+    data[0] = T::discriminator();
+    *T::try_from_bytes_mut(&mut data).unwrap() = value;
+    Account {
+        lamports,
+        data,
+        owner: program_id,
+        executable: false,
+        rent_epoch: 0,
+    }
 }
 
 fn read_account<T: AccountDeserialize>(account: &Account) -> &T {

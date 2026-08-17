@@ -44,6 +44,11 @@ impl Config {
         }
         draws
     }
+
+    pub fn contains_recent_draw(&self, draw_id: u64) -> bool {
+        let count = self.recent_draw_count.min(RECENT_DRAW_CAPACITY as u64) as usize;
+        self.recent_draws_newest_first()[..count].contains(&draw_id)
+    }
 }
 
 account!(FateAccount, Config);
@@ -69,5 +74,14 @@ mod tests {
     #[test]
     fn account_size_is_stable() {
         assert_eq!(Config::SIZE, 256);
+    }
+
+    #[test]
+    fn recent_draw_membership_ignores_unused_slots() {
+        let mut config = Config::zeroed();
+        assert!(!config.contains_recent_draw(0));
+        config.push_recent_draw(0);
+        assert!(config.contains_recent_draw(0));
+        assert!(!config.contains_recent_draw(1));
     }
 }

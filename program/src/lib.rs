@@ -4,6 +4,8 @@
 mod activate_draw;
 mod claim_player;
 mod claim_stake_withdrawal;
+mod close_draw;
+mod close_player_registry;
 mod deposit_player;
 mod deposit_stake;
 mod grow_program_accounts;
@@ -18,6 +20,8 @@ mod settle_draw_dev;
 use activate_draw::*;
 use claim_player::*;
 use claim_stake_withdrawal::*;
+use close_draw::*;
+use close_player_registry::*;
 use deposit_player::*;
 use deposit_stake::*;
 use fate_api::prelude::*;
@@ -68,6 +72,10 @@ pub fn process_instruction(
                 Err(ProgramError::InvalidInstructionData)
             }
         }
+        FateInstruction::ClosePlayerRegistry => {
+            process_close_player_registry(program_id, accounts, data)
+        }
+        FateInstruction::CloseDraw => process_close_draw(program_id, accounts, data),
     }
 }
 

@@ -10,13 +10,13 @@ On every iteration, read `Config`, derive the current `Draw`, and act only when 
 2. `Activated`: submit `lock_draw` once cluster time reaches `locks_at`.
 3. `Locked` on localnet/devnet: submit `settle_draw_dev` and pay rent for the next `Draw` and `PlayerRegistry`.
 4. `Locked` on mainnet: use the future Entropy request/consume sequence, then submit production settlement.
-5. `Settled`: do nothing; successful settlement already creates the next funding draw and advances `Config.current_draw_id` atomically.
+5. When no draw transition is due, close one eligible empty Player registry or one expired draw header and refund its recorded rent payer.
 
 Before sending, simulate the transaction. After sending, confirm it, reread state, and treat “another keeper already advanced the draw” as success. Refresh the blockhash on every retry and use bounded exponential backoff for RPC failures.
 
-The keeper key should hold only enough SOL for fees and new-draw rent. At current rent settings that is about `0.07522368 SOL` per draw plus transaction fees. Monitor and refill it, but never make it the program authority or fee treasury.
+The keeper key should hold only enough SOL for fees and the bounded rent float. At current rent settings each new draw pair temporarily needs about `0.07522368 SOL`. Because draw headers remain for ten results, a fresh keeper needs roughly `0.83 SOL` plus fees to bridge the initial history window; eligible registry rent returns sooner, and expired draw rent then recycles continuously. Recheck cluster rent and measure the exact localnet peak before funding devnet. Never make this key the program authority or fee treasury.
 
-That recurring rent is a temporary limitation of the current per-draw account layout, not the intended final operating cost. The program must recycle or close obsolete draw storage before this is acceptable for mainnet.
+Cleanup is permissionless, but recovered lamports can only go to the payer recorded when the draw was created. A competing keeper therefore cannot capture rent.
 
 ## Run Locally
 
@@ -39,7 +39,7 @@ pnpm keeper -- --observe-only
 
 Run one read/transition cycle with `pnpm keeper:once`, or keep the normal worker running with `pnpm keeper`. Local/dev settlement requires the program binary built with `dev-randomness`. Use `KEEPER_CLUSTER=devnet` and a devnet RPC pair for the devnet phase. Mainnet is rejected intentionally until the Entropy settlement path exists.
 
-The keeper validates the RPC genesis hash on devnet, account owner, exact account size, and Steel discriminator before decoding state. It simulates, signs with the dedicated fee payer, submits, confirms, and rereads state only when a transition is due.
+The keeper validates the RPC genesis hash on devnet, account owner, exact account size, and Steel discriminator before decoding state. It simulates, signs with the dedicated fee payer, submits, confirms, and rereads state only when a transition or cleanup action is due. Cleanup discovery scans only program-owned accounts of the exact Draw and PlayerRegistry sizes; the program repeats every eligibility and refund-recipient check on-chain.
 
 ## Deployment
 

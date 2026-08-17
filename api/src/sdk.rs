@@ -224,6 +224,38 @@ pub fn settle_draw_dev(
     }
 }
 
+pub fn close_player_registry(program_id: Pubkey, rent_payer: Pubkey, draw_id: u64) -> Instruction {
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new_readonly(config_pda(&program_id).0, false),
+            AccountMeta::new_readonly(draw_pda(&program_id, draw_id).0, false),
+            AccountMeta::new(player_registry_pda(&program_id, draw_id).0, false),
+            AccountMeta::new(rent_payer, false),
+        ],
+        data: ClosePlayerRegistry {
+            draw_id: draw_id.to_le_bytes(),
+        }
+        .to_bytes(),
+    }
+}
+
+pub fn close_draw(program_id: Pubkey, rent_payer: Pubkey, draw_id: u64) -> Instruction {
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new_readonly(config_pda(&program_id).0, false),
+            AccountMeta::new(draw_pda(&program_id, draw_id).0, false),
+            AccountMeta::new_readonly(player_registry_pda(&program_id, draw_id).0, false),
+            AccountMeta::new(rent_payer, false),
+        ],
+        data: CloseDraw {
+            draw_id: draw_id.to_le_bytes(),
+        }
+        .to_bytes(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -435,5 +467,29 @@ mod tests {
             instruction.accounts[2].pubkey,
             staker_registry_pda(&program_id).0
         );
+    }
+
+    #[test]
+    fn cleanup_builders_are_permissionless_and_refund_only_the_recorded_payer() {
+        let program_id = Pubkey::new_unique();
+        let rent_payer = Pubkey::new_unique();
+        let registry = close_player_registry(program_id, rent_payer, 7);
+        let draw = close_draw(program_id, rent_payer, 7);
+
+        for instruction in [&registry, &draw] {
+            assert!(instruction
+                .accounts
+                .iter()
+                .all(|account| !account.is_signer));
+            assert_eq!(instruction.accounts[0].pubkey, config_pda(&program_id).0);
+            assert_eq!(instruction.accounts[1].pubkey, draw_pda(&program_id, 7).0);
+            assert_eq!(
+                instruction.accounts[2].pubkey,
+                player_registry_pda(&program_id, 7).0
+            );
+            assert_eq!(instruction.accounts[3], AccountMeta::new(rent_payer, false));
+        }
+        assert_eq!(registry.data[0], FateInstruction::ClosePlayerRegistry as u8);
+        assert_eq!(draw.data[0], FateInstruction::CloseDraw as u8);
     }
 }

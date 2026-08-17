@@ -27,3 +27,10 @@ pub const STAKER_PRO_RATA_BPS: u64 = 6_500;
 
 pub const MAX_STAKERS: usize = 512;
 pub const MAX_PLAYERS_PER_DRAW: usize = 128;
+
+pub const CONFIG_SEED: &[u8] = b"config";
+pub const STAKER_VAULT_SEED: &[u8] = b"staker-vault";
+pub const STAKER_REGISTRY_SEED: &[u8] = b"staker-registry";
+pub const DRAW_SEED: &[u8] = b"draw";
+pub const PLAYER_REGISTRY_SEED: &[u8] = b"player-registry";
+pub const ENTROPY_AUTHORITY_SEED: &[u8] = b"entropy-authority";

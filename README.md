@@ -7,6 +7,14 @@ Fate is a SOL lottery with two ways to participate:
 
 Staker SOL is held inert. It does not earn validator or DeFi yield. Game returns come from Player losses, and Staker principal can erode when the Player side wins.
 
+## Documentation
+
+- [Build plan](docs/BUILD_PLAN.md)
+- [Account model](docs/ACCOUNT_MODEL.md)
+- [Randomness gate](docs/RANDOMNESS_GATE.md)
+
+
+
 ## Draw Model
 
 Every activated draw has two rolls:
@@ -82,13 +90,15 @@ boost = 1 + 50% * remaining_initial_threshold_fraction
 wallet_weight = sum(deposit * boost_at_deposit)
 ```
 
+
 | Player TVL before deposit | Player weight |
-| ---: | ---: |
-| 0% of initial threshold | 1.50x |
-| 25% | 1.375x |
-| 50% | 1.25x |
-| 75% | 1.125x |
-| 100% | 1.00x |
+| ------------------------- | ------------- |
+| 0% of initial threshold   | 1.50x         |
+| 25%                       | 1.375x        |
+| 50%                       | 1.25x         |
+| 75%                       | 1.125x        |
+| 100%                      | 1.00x         |
+
 
 The boost changes only which Player wins after the Player side is selected. It never changes the fixed 90% Player-side probability.
 
@@ -134,30 +144,32 @@ This remains proportional even as the activation threshold falls. Applying the s
 
 The current datasets contain 1,000 timed draws for the primary seed of each size, plus four additional verification seeds per size. That is 15,000 draws across 15 scenario/seed combinations. Each funding period begins with one Player, adds stochastic arrivals every 10 minutes, gives pending positions a 1% refund chance per interval, permits immediate Staker exits, and applies threshold decay until activation.
 
-| Metric | Small | Medium | Large |
-| --- | ---: | ---: | ---: |
-| Seed | `20260811` | `20260817` | `20260829` |
-| Average Stakers | 34.5 | 92.8 | 319.9 |
-| Average Staker TVL | 40.85 SOL | 502.06 SOL | 8,127.75 SOL |
-| Average Player TVL | 1.05 SOL | 7.21 SOL | 64.40 SOL |
-| Median funding time | 20 min | 40 min | 60 min |
-| P90 funding time | 40 min | 60 min | 90 min |
-| Maximum funding time | 70 min | 110 min | 130 min |
-| Average activation threshold | 0.82% | 0.68% | 0.52% |
-| Active-funding draws/day | 56.47 | 33.36 | 20.70 |
-| Average effective Player wallets | 3.29 | 3.96 | 5.93 |
-| Median largest Player share | 45.66% | 40.75% | 30.29% |
-| Player wins | 915 | 907 | 892 |
-| Median Player winner profit | 0.56 SOL | 4.54 SOL | 50.16 SOL |
-| Median Staker jackpot | 0.28 SOL | 1.80 SOL | 17.33 SOL |
-| Quoted Player EV / stake | -10.57% | -9.19% | -7.88% |
-| Realized Player PnL / stake | -9.02% | -7.88% | -8.26% |
-| Profitable Players | 23.19% | 20.11% | 14.65% |
-| Profitable Stakers | 78.59% | 59.63% | 51.45% |
-| Staker return / draw | 0.144% | 0.059% | 0.031% |
-| Protocol revenue | 36.08 SOL | 272.46 SOL | 2,821.17 SOL |
-| Protocol revenue / Player SOL | 3.44% | 3.78% | 4.38% |
-| Protocol revenue / active-funding day | 2.04 SOL | 9.09 SOL | 58.39 SOL |
+
+| Metric                                | Small      | Medium     | Large        |
+| ------------------------------------- | ---------- | ---------- | ------------ |
+| Seed                                  | `20260811` | `20260817` | `20260829`   |
+| Average Stakers                       | 34.5       | 92.8       | 319.9        |
+| Average Staker TVL                    | 40.85 SOL  | 502.06 SOL | 8,127.75 SOL |
+| Average Player TVL                    | 1.05 SOL   | 7.21 SOL   | 64.40 SOL    |
+| Median funding time                   | 20 min     | 40 min     | 60 min       |
+| P90 funding time                      | 40 min     | 60 min     | 90 min       |
+| Maximum funding time                  | 70 min     | 110 min    | 130 min      |
+| Average activation threshold          | 0.82%      | 0.68%      | 0.52%        |
+| Active-funding draws/day              | 56.47      | 33.36      | 20.70        |
+| Average effective Player wallets      | 3.29       | 3.96       | 5.93         |
+| Median largest Player share           | 45.66%     | 40.75%     | 30.29%       |
+| Player wins                           | 915        | 907        | 892          |
+| Median Player winner profit           | 0.56 SOL   | 4.54 SOL   | 50.16 SOL    |
+| Median Staker jackpot                 | 0.28 SOL   | 1.80 SOL   | 17.33 SOL    |
+| Quoted Player EV / stake              | -10.57%    | -9.19%     | -7.88%       |
+| Realized Player PnL / stake           | -9.02%     | -7.88%     | -8.26%       |
+| Profitable Players                    | 23.19%     | 20.11%     | 14.65%       |
+| Profitable Stakers                    | 78.59%     | 59.63%     | 51.45%       |
+| Staker return / draw                  | 0.144%     | 0.059%     | 0.031%       |
+| Protocol revenue                      | 36.08 SOL  | 272.46 SOL | 2,821.17 SOL |
+| Protocol revenue / Player SOL         | 3.44%      | 3.78%      | 4.38%        |
+| Protocol revenue / active-funding day | 2.04 SOL   | 9.09 SOL   | 58.39 SOL    |
+
 
 Funding time increases with protocol size. The primary seeds produced median waits of `20`, `40`, and `60` minutes. Across all five seeds per size, no draw remained in funding for more than 24 hours; four of 15,000 draws reached the final activation floor under the current arrival assumptions.
 
@@ -182,6 +194,8 @@ Run all scenarios:
 python3 data-simulation/run_scenarios.py --data-dir data-simulation
 ```
 
+
+
 ## Why These Parameters
 
 - **90% Player / 10% Staker:** gives Players a strong side-level chance while preserving a meaningful Staker event. The UI must also show each Player's much smaller personal winning chance.
@@ -195,6 +209,8 @@ python3 data-simulation/run_scenarios.py --data-dir data-simulation
 - **50% maximum early boost:** rewards the wallets that help start funding without changing the fixed side probabilities.
 - **No concentration gate:** allows a single Player to activate a draw and treats concentration as disclosed odds rather than an invalid state.
 
+
+
 ## Required User Disclosures
 
 - A Player can lose the full committed deposit.
@@ -204,8 +220,10 @@ python3 data-simulation/run_scenarios.py --data-dir data-simulation
 - The interface must show the current threshold, waiting time, threshold decay, pool composition, wallet concentration, personal odds, exact profit if selected, maximum loss, erosion, and fees before commitment.
 - Randomness must be unpredictable before lock, operator-independent, verifiable after settlement, and have a defined timeout or provider-failure path.
 
+
+
 ## Build Readiness
 
 The mechanism is ready for implementation planning. The simulator now covers capital scale, timed Player arrivals, pending withdrawals, threshold decay, countdown entry, wallet aggregation, settlement, fees, erosion, and long-run participant PnL.
 
-Before mainnet parameters are immutable, testnet usage must replace synthetic arrival assumptions with observed data. The build still needs an account model, Staker share accounting, pending Player custody, permissionless activation and settlement, verifiable randomness, timeout recovery, precision limits, and a complete invariant test suite.
+Before mainnet parameters are immutable, testnet usage must replace synthetic arrival assumptions with observed data. The account model and deterministic economic core are ready; the build still needs instruction handlers, pending Player custody, permissionless activation and settlement, verifiable randomness, timeout recovery, capacity benchmarks, and a complete invariant test suite.

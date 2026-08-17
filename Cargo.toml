@@ -5,13 +5,15 @@ members = ["api", "program"]
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.84.1"
 license = "Apache-2.0"
 repository = "https://github.com/talibabtou/fate"
 
 [workspace.dependencies]
+bytemuck = { version = "1.14", features = ["derive", "min_const_generics"] }
 fate-api = { path = "./api" }
 num_enum = "0.7.6"
-solana-program = "^2.1"
+solana-program = "=2.1.15"
 steel = "4.0.9"
 
 [profile.dev]

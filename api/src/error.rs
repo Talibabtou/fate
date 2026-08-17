@@ -17,6 +17,15 @@ pub enum FateError {
 
     #[error("Selected weight is outside the registry")]
     SelectionOutOfRange = 4,
+
+    #[error("Registry is full")]
+    RegistryFull = 5,
+
+    #[error("Share amount is invalid")]
+    InvalidShareAmount = 6,
+
+    #[error("Player position has committed funds")]
+    PlayerFundsCommitted = 7,
 }
 
 error!(FateError);

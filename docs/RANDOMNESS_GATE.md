@@ -1,5 +1,7 @@
 # Fate Randomness Gate
 
+Build status and implementation order are tracked in [BUILD_PLAN.md](BUILD_PLAN.md).
+
 Status: **devnet path selected; deployment pending**  
 Checked: 2026-08-17
 

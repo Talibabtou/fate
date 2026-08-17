@@ -26,6 +26,12 @@ __pycache__/
 .pytest_cache/
 .venv/
 
+# Reproducible simulation detail exports
+data-simulation/small/*.csv
+data-simulation/medium/*.csv
+data-simulation/large/*.csv
+data-simulation/parameter-study/*_runs.csv
+
 # Editors
 .idea/
 .vscode/

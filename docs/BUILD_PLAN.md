@@ -33,31 +33,31 @@ This checklist records the settled implementation choices and build order for th
 - [x] Omit notifications and analytics from v1.
 - [x] Use the Entropy implementation in `repos/entropy` as the randomness dependency.
 
+
+
 ## Decisions To Close
 
 These items must be resolved before the custody program is implemented.
 
 - [x] Resolve the funding liveness conflict.
-
   Staker withdrawals execute immediately during `FUNDING`. Each withdrawal updates the Staker TVL snapshot, activation floor, and active threshold. Withdrawals queue only after `ACTIVATED` starts the five-minute countdown. Player deposits remain refundable throughout `FUNDING`.
 
 - [x] Keep funding open without a maximum duration.
 
 - [x] Confirm the Player-side fee formula:
-
   ```text
   gross_profit = losing_player_deposits + staker_erosion
   protocol_fee = 5% * gross_profit
   player_claim = winner_deposit + gross_profit - protocol_fee
   ```
-
   The winner's own deposit is the only amount excluded from the fee base.
 
 - [x] Keep Player deposits open during the five-minute countdown at `1.00x` weight.
 
 - [x] Confirm `repos/entropy` as the selected randomness repository.
-
   Devnet work must still verify its program ID, provider availability, cost, commit supply, timeout behavior, and recovery path. The repository labels itself work in progress, so source availability alone does not close those checks.
+
+
 
 ## Exact Economic Model
 
@@ -65,7 +65,6 @@ These items must be resolved before the custody program is implemented.
 - [x] Define a single rounding policy: all divisions round down, and remaining lamports go to the protocol treasury.
 - [ ] Calculate activation from the immutable Staker TVL snapshot and first-Player timestamp.
 - [ ] Calculate the threshold as:
-
   ```text
   initial = 1% * staker_tvl_snapshot
   steps = floor(elapsed_seconds / 600)
@@ -75,16 +74,18 @@ These items must be resolved before the custody program is implemented.
   ```
 
 - [ ] Store each Player deposit's boosted weight at deposit time.
-- [ ] Use `u128` intermediates for weights, shares, fee calculations, and proportional payouts.
+- [x] Use `u128` intermediates for weights, shares, fee calculations, and proportional payouts.
 - [x] Define the early boost with integer math and cap it between `1.00x` and `1.50x`.
 - [x] Define Player payout, Staker payout, erosion, fee, and dust formulas as executable test vectors.
 - [x] Prove lamport conservation for both winner sides.
 - [ ] Prove that Player principal cannot be committed before activation.
 - [ ] Prove that Staker winnings and erosion are reflected by vault share value.
 
+
+
 ## Simulation Gate
 
-- [x] Rename the legacy side terminology to Player in `simulate.py`, `run_scenarios.py`, generated CSV columns, analysis files, and `README.md`.
+- [x] Rename the legacy side terminology to Player in `simulate.py`, `run_scenarios.py`, generated CSV columns, analysis files, and `../README.md`.
 - [x] Add the new activation floor `max(0.1 SOL, 0.1% of Staker TVL)`.
 - [x] Test the proposed `0.01 SOL` minimum Player deposit and measure stuck-funding frequency.
 - [x] Charge 5% on `losing Player deposits + erosion` for Player-side wins.
@@ -93,7 +94,9 @@ These items must be resolved before the custody program is implemented.
 - [x] Rerun small, medium, and large scenarios with several random seeds.
 - [x] Record activation rate, funding duration, time spent at the activation floor, queued-withdrawal time, Player EV, Staker return, protocol revenue, and value conservation.
 - [ ] Compare simulator test vectors against the Rust math implementation byte for byte.
-- [x] Update `README.md` only after the revised simulation passes.
+- [x] Update `../README.md` only after the revised simulation passes.
+
+
 
 ## Repository Shape
 
@@ -101,40 +104,43 @@ Keep the code under `workspace/fate` without creating extra packages until they 
 
 ```text
 fate/
-  app/                 Next.js application and keeper script
-  api/                 Steel state, instructions, errors, events, and Rust SDK
-  program/             Solana instruction handlers
-  tests/               Program integration and economic invariant tests
-  simulate.py          Economic simulation
-  run_scenarios.py     Scenario runner
-  README.md             Current product model
-  BUILD_PLAN.md         This checklist
+  app/                  Next.js application and keeper script (planned)
+  api/                  Steel state, instructions, errors, events, and Rust SDK
+  program/              Solana instruction handlers
+  tests/                Program integration and invariant tests (planned)
+  data-simulation/      Simulator, scenario runner, retained reports, and summaries
+  docs/                 Build plan, account model, randomness gate, and agent notes
+  README.md             Current product model and documentation index
 ```
 
 - [x] Initialize a root Cargo workspace containing `api` and `program`.
-- [ ] Follow the layout and account-validation patterns in `repos/steel` and `repos/steel-book`.
+- [x] Follow the layout and account-validation patterns in `repos/steel` and `repos/steel-book`.
 - [ ] Scaffold `app` with Next.js, TypeScript, Tailwind CSS, pnpm, and the App Router.
 - [ ] Add Biome with format, lint, and import-order checks.
 - [ ] Add root commands for program tests, app checks, and devnet configuration.
 - [x] Document required tool versions and environment variables.
 - [x] Keep RPC URLs, Privy app ID, program ID, Entropy addresses, and keeper keys out of source control.
 
+
+
 ## On-Chain Accounts
 
 Start with fixed-size registries. This bounds account rent, transaction compute, and winner-selection work. Unlimited participants would require a sum tree, proofs, and more state-management code before the product has users.
 
-- [ ] Define `Config` with authority, fee treasury, pause state, current draw ID, and program version.
-- [ ] Define `StakerVault` with active assets, pending assets, total shares, and queued withdrawal value.
-- [ ] Define a fixed `StakerRegistry` with at most 512 wallet entries.
-- [ ] Define one persistent Staker entry per wallet inside the registry with active shares, pending deposit, queued withdrawal, and status.
-- [ ] Define `Draw` with state, timestamps, snapshots, threshold data, Player totals, Entropy reference, result, fee, erosion, winner, and claim state.
-- [ ] Define a fixed Player registry with at most 128 wallets in each draw.
-- [ ] Store each Player wallet's refundable deposit, committed deposit, and summed boosted weight.
-- [ ] Store the ten latest settled draw IDs in a fixed ring buffer in `Config`.
-- [ ] Derive every PDA from fixed prefixes and explicit IDs.
-- [ ] Calculate account rent and publish it in the technical notes.
+- [x] Define `Config` with authority, fee treasury, pause state, current draw ID, and program version.
+- [x] Define `StakerVault` with active assets, pending assets, total shares, and queued withdrawal value.
+- [x] Define a fixed `StakerRegistry` with at most 512 wallet entries.
+- [x] Define one persistent Staker entry per wallet inside the registry with active shares, pending deposit, queued withdrawal, and status.
+- [x] Define `Draw` with state, timestamps, snapshots, threshold data, Player totals, Entropy reference, result, fee, erosion, winner, and claim state.
+- [x] Define a fixed Player registry with at most 128 wallets in each draw.
+- [x] Store each Player wallet's refundable deposit, committed deposit, and summed boosted weight.
+- [x] Store the ten latest settled draw IDs in a fixed ring buffer in `Config`.
+- [x] Derive every PDA from fixed prefixes and explicit IDs.
+- [x] Calculate account rent and publish it in the technical notes.
 - [ ] Benchmark 512 Stakers and 128 Players against Solana account-size and compute limits.
 - [ ] Lower capacities if the maximum settlement cannot complete with a safety margin.
+
+
 
 ## Program Instructions
 
@@ -158,6 +164,8 @@ Start with fixed-size registries. This bounds account rent, transaction compute,
 - [ ] Ensure pause never blocks pending Player refunds, Staker exits, locked-draw settlement, or claims.
 - [ ] Emit compact events for deposits, refunds, activation, lock, settlement, queued Staker actions, claims, and pause changes.
 
+
+
 ## Randomness
 
 Build order decision: implement the deterministic program and app against fixtures first, then deploy the verified Entropy source under a Fate-controlled devnet ID with a dev-only provider. Custody testing remains blocked until that deployment passes the lifecycle and recovery tests. Mainnet uses the official Entropy ID only after output parity is demonstrated.
@@ -179,6 +187,10 @@ Live verification on 2026-08-17 found no Entropy program at its declared ID on d
 ## Program Tests
 
 - [ ] Test all state transitions and reject transitions from the wrong phase.
+- [ ] Test every instruction's owner, data-length, discriminator, signer, writable/read-only, PDA seed, canonical bump, and stored-relationship validation.
+- [ ] Test reinitialization, pre-funded PDA initialization, duplicate mutable accounts, fake sysvars, substituted CPI programs, and account type cosplay.
+- [ ] Test direct lamport donations cannot change tracked assets, liabilities, shares, thresholds, payouts, or solvency.
+- [ ] Assert tracked custody assets plus rent always cover refunds, withdrawals, and claims after every value-moving instruction.
 - [ ] Test threshold decay at every 10-minute boundary.
 - [ ] Test activation at, below, and above the exact threshold.
 - [ ] Test the larger-of-two activation floor at several Staker TVLs.
@@ -197,6 +209,8 @@ Live verification on 2026-08-17 found no Entropy program at its declared ID on d
 - [ ] Run randomized invariant tests for lamport conservation and share ownership.
 - [ ] Run `steel test`, `steel build`, and `cargo test-sbf` before devnet deployment.
 
+
+
 ## Keeper
 
 The keeper is a small script, not a service platform. State transitions remain callable by anyone.
@@ -209,6 +223,8 @@ The keeper is a small script, not a service platform. State transitions remain c
 - [ ] Do not add an on-chain caller reward in v1.
 - [ ] Make every keeper action idempotent and harmless when another caller wins the race.
 - [ ] Log transaction signature, draw ID, attempted transition, and error locally without user tracking.
+
+
 
 ## Next.js Foundation
 
@@ -228,6 +244,8 @@ Privy reference: [Getting started with Privy and Solana](https://docs.privy.io/r
 
 ## Page Design
 
+
+
 ### Visual Thesis
 
 Fate should feel like a quiet financial instrument with a visible element of chance. Use near-black surfaces, neutral text, one non-ORE accent color, tabular figures, restrained borders, and motion only when a draw changes phase. Avoid casino imagery, marketing sections, decorative gradients, and a grid of dashboard cards.
@@ -244,6 +262,8 @@ current position and claim or withdrawal state
 ten recent draw results
 compact testnet and risk footer
 ```
+
+
 
 ### Main Interaction
 
@@ -267,6 +287,8 @@ One segmented control changes the central action between Staker and Player. The 
 - [ ] Verify that no content overlaps at 320px mobile width or common desktop sizes.
 - [ ] Do not add browser notifications, email, chat integrations, or analytics in v1.
 
+
+
 ## App Tests
 
 - [ ] Unit-test threshold, boost, odds, fee, erosion, payout, and share-preview formatting against Rust vectors.
@@ -279,6 +301,8 @@ One segmented control changes the central action between Staker and Player. The 
 - [ ] Test mobile wallet connection and transaction signing through Privy.
 - [ ] Run Biome checks, TypeScript checks, unit tests, and the Next.js production build.
 - [ ] Run Playwright against mobile and desktop viewports for deposit, refund, activation, settlement, and claim flows.
+
+
 
 ## Devnet Release
 
@@ -297,6 +321,8 @@ One segmented control changes the central action between Staker and Player. The 
 - [ ] Deploy the checked Next.js build to Vercel.
 - [ ] Keep the site labeled as devnet and test-only.
 
+
+
 ## Mainnet Gates
 
 - [ ] Replace synthetic arrival assumptions with observed devnet behavior.
@@ -309,6 +335,8 @@ One segmented control changes the central action between Staker and Player. The 
 - [ ] Publish program IDs, authority addresses, fee address, constants, account model, randomness flow, and source commit.
 - [ ] Prepare incident steps that preserve refunds, withdrawals, claims, and locked settlement.
 - [ ] Buy and configure the production domain only after these gates pass.
+
+
 
 ## Definition Of Done For V1
 

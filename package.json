@@ -1,0 +1,19 @@
+{
+  "name": "fate",
+  "private": true,
+  "packageManager": "pnpm@11.5.2",
+  "scripts": {
+    "biome:check": "biome check app",
+    "check": "pnpm biome:check && pnpm keeper:check",
+    "format": "biome format --write app",
+    "format:check": "biome format app",
+    "keeper": "pnpm --dir app keeper",
+    "keeper:once": "pnpm --dir app keeper:once",
+    "keeper:check": "pnpm --dir app check",
+    "keeper:test": "pnpm --dir app test",
+    "lint": "biome lint app"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.8"
+  }
+}

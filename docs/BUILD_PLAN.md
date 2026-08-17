@@ -117,8 +117,8 @@ fate/
 - [x] Initialize a root Cargo workspace containing `api` and `program`.
 - [x] Follow the layout and account-validation patterns in `repos/steel` and `repos/steel-book`.
 - [ ] Scaffold `app` with Next.js, TypeScript, Tailwind CSS, pnpm, and the App Router.
-- [ ] Add Biome with format, lint, and import-order checks.
-- [ ] Add root commands for program tests, app checks, and devnet configuration.
+- [x] Add Biome with format, lint, and import-order checks for the keeper and app TypeScript.
+- [ ] Add root commands for program tests, app checks, and devnet configuration. Biome, TypeScript, and keeper-test commands are available; program and devnet orchestration remain.
 - [x] Document required tool versions and environment variables.
 - [x] Keep RPC URLs, Privy app ID, program ID, Entropy addresses, and keeper keys out of source control.
 
@@ -222,14 +222,14 @@ The lifecycle runs through the real Solana runtime. It covers multi-step genesis
 
 The keeper is a small script, not a service platform. State transitions remain callable by anyone.
 
-- [ ] Add one Node script under `app/scripts` that reads the current draw and submits only a transition that is due. Run it as a separate long-lived worker; see `KEEPER.md`.
-- [ ] Handle activation, locking, Entropy sampling and reveal, timeout recovery, and settlement.
+- [x] Add one Node script under `app/scripts` that reads the current draw and submits only a transition that is due. Run it as a separate long-lived worker; see `KEEPER.md`.
+- [ ] Handle activation, locking, Entropy sampling and reveal, timeout recovery, and settlement. Activation, locking, and feature-gated dev settlement are implemented; mainnet Entropy remains.
 - [ ] Use a dedicated hot fee-payer key with a limited SOL balance.
-- [ ] Keep the authority and fee treasury wallet out of the keeper process.
+- [x] Keep the authority and fee treasury wallet out of the keeper process.
 - [ ] Fund keeper transaction fees from protocol revenue by manual treasury transfer in v1.
 - [ ] Do not add an on-chain caller reward in v1.
-- [ ] Make every keeper action idempotent and harmless when another caller wins the race.
-- [ ] Log transaction signature, draw ID, attempted transition, and error locally without user tracking.
+- [x] Make every keeper action idempotent and harmless when another caller wins the race.
+- [x] Log transaction signature, draw ID, attempted transition, and error locally without user tracking.
 
 
 

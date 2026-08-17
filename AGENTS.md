@@ -78,7 +78,7 @@ The `0.01 SOL` minimum can remain below the activation floor because no capital 
 
 ## Capacity
 
-The v1 plan starts with fixed registries of at most 512 active Staker wallets and 128 Player wallets per draw. These are engineering limits, not economic caps. They bound account storage and winner-selection compute in one Solana transaction.
+The v1 plan starts with fixed registries of at most 512 active Staker wallets and 116 Player wallets per draw. These are engineering limits, not economic caps. They bound account storage and winner-selection compute in one Solana transaction.
 
 Benchmark maximum-capacity settlement before fixing these values. Lower them if settlement lacks compute margin. Do not add a sum tree or proof system until measured usage requires more capacity.
 

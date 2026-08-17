@@ -1,0 +1,20 @@
+{
+  "name": "@fate/app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "keeper": "node --experimental-strip-types scripts/keeper.ts",
+    "keeper:once": "node --experimental-strip-types scripts/keeper.ts --once",
+    "check": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test scripts/*.test.ts"
+  },
+  "dependencies": {
+    "@solana/kit": "^7.1.0",
+    "@solana/kit-plugin-rpc": "^0.16.0",
+    "@solana/kit-plugin-signer": "^0.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^7.0.2"
+  }
+}

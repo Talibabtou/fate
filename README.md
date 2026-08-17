@@ -210,6 +210,6 @@ python3 data-simulation/run_scenarios.py --data-dir data-simulation
 
 ## Build Readiness
 
-The mechanism is ready for implementation planning. The simulator now covers capital scale, timed Player arrivals, pending withdrawals, threshold decay, countdown entry, wallet aggregation, settlement, fees, erosion, and long-run participant PnL.
+The simulator and deterministic Steel custody core now cover funding, deposits, refunds, activation, countdown locking, both settlement sides, claims, queued Staker actions, fees, erosion, and permissionless progression. Localnet and devnet use a compile-time deterministic settlement fixture; mainnet Entropy integration remains intentionally deferred.
 
-Before mainnet parameters are immutable, testnet usage must replace synthetic arrival assumptions with observed data. The account model and deterministic economic core are ready; the build still needs instruction handlers, pending Player custody, permissionless activation and settlement, verifiable randomness, timeout recovery, capacity benchmarks, and a complete invariant test suite.
+Before mainnet parameters are immutable, testnet usage must replace synthetic arrival assumptions with observed data. The build still needs bounded draw-account rent recovery, maximum-capacity benchmarks, broader adversarial and invariant tests, a complete keeper-driven localnet/devnet run, the Next.js app, and the verified mainnet Entropy integration with terminal outage recovery.

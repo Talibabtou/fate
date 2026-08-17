@@ -65,7 +65,7 @@ The `0.01 SOL` minimum can remain below the activation floor because no capital 
 - Use Steel, following `repos/steel` and `repos/steel-book`. Do not default to Anchor.
 - Follow the Steel workspace shape: root Cargo workspace, `api/`, `program/`, and integration tests.
 - Use `repos/entropy` for randomness and study ORE's existing Entropy integration as code reference only.
-- Entropy calls itself work in progress. Verify devnet program ID, provider/API availability, commit supply, cost, slot timing, timeout, and recovery before Fate depends on it.
+- Entropy calls itself work in progress. Fate does not depend on it on localnet or devnet. Before mainnet, verify the deployed program and pinned source, provider/API availability, commit supply, cost, slot timing, timeout, and recovery.
 - Use one Fate-owned Entropy variable. Do not share ORE's variable.
 - Derive separate side and winner samples with domain-separated hashes containing the draw ID.
 - Use unbiased integer selection. Do not use unchecked modulo selection when it introduces bias.
@@ -107,12 +107,12 @@ Benchmark maximum-capacity settlement before fixing these values. Lower them if 
 
 ## Immediate Work Order
 
-1. Update the simulator for the larger-of-two activation floor, `0.01 SOL` Player minimum, fee on erosion, no countdown boost, and immediate Staker withdrawals during `FUNDING`.
-2. Rerun small, medium, and large scenarios with several seeds and verify value conservation.
-3. Update `README.md` with only the accepted model and new results.
-4. Build the deterministic Steel program core and Next.js app against fixture state.
-5. Deploy the Fate-controlled Entropy copy and provider on devnet before enabling custody tests.
-6. Verify the complete Entropy lifecycle, missed-slot rejection, retry, refund, and mainnet parity behavior.
+1. Finish adversarial tests, invariant coverage, maximum-capacity benchmarks, and bounded rent recovery for the deterministic Steel program.
+2. Run the keeper and complete custody loop on localnet, then deploy the feature-gated deterministic artifact to devnet.
+3. Build the Next.js app against confirmed localnet/devnet state and exercise the full wallet flow.
+4. Run long devnet batches and compare balances and outcomes with the simulator.
+5. Before mainnet only, replace the deterministic settlement entry point with the verified Entropy account/CPI gate.
+6. Verify Fate's Entropy validation, missed-slot rejection, retry or void/refund recovery, and production artifact before deployment; do not redeploy Entropy to devnet.
 
 ## Simulation Commands
 

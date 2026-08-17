@@ -56,7 +56,9 @@ withdrawal_lamports = floor(shares * active_assets / total_shares)
 
 The first deposit mints one share per lamport. Player losses increase `active_assets_lamports` without minting shares. Erosion decreases assets without burning shares. Both therefore change the SOL value of every existing share automatically.
 
-## Closure
+## Planned Closure
+
+These are the required closure rules. The current program records the draw rent payer but does not yet implement expired-account closure; completing this lifecycle is required before long devnet batches or mainnet.
 
 - A Staker entry may be reused only when active shares, pending deposits, queued withdrawals, and claimable withdrawal SOL are all zero.
 - A Player entry may be reused only when refundable deposits, committed deposits, and claims are all zero.

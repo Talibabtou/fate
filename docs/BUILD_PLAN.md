@@ -2,6 +2,8 @@
 
 This checklist records the settled implementation choices and build order for the first devnet version of Fate's single-page Next.js dApp and Solana program.
 
+Last fully reconciled with the product model, simulator, program, keeper, and current frontend integration guidance: 2026-08-17.
+
 ## Product Decisions
 
 - [x] Name the two sides **Staker** and **Player**.
@@ -26,18 +28,18 @@ This checklist records the settled implementation choices and build order for th
 - [x] Do not expire or cancel a funding draw based on elapsed time.
 - [x] Charge the Player-side 5% fee on losing Player deposits and Staker erosion, excluding only the winner's deposit.
 - [x] Give countdown deposits `1.00x` weight with no early-funding boost.
-- [x] Automatically add all Staker winnings to Staker balances.
+- [x] Automatically credit Staker winnings on-chain through vault value and jackpot shares, using an exact claimable liability only when a jackpot is too small to represent safely as one share.
 - [x] Credit the full Player payout to an on-chain claim balance.
 - [x] Keep economic parameters constant in v1.
-- [x] Launch interactive testing on devnet.
+- [x] Use devnet for interactive testing before any mainnet release.
 - [x] Omit notifications and analytics from v1.
-- [x] Use the Entropy implementation in `repos/entropy` as the randomness dependency.
+- [x] Use the Entropy implementation in `repos/entropy` as the mainnet randomness dependency; localnet and devnet use the feature-gated deterministic fixture.
 
 
 
-## Decisions To Close
+## Closed Protocol Decisions
 
-These items must be resolved before the custody program is implemented.
+These decisions were resolved before custody implementation and remain protocol source of truth.
 
 - [x] Resolve the funding liveness conflict.
   Staker withdrawals execute immediately during `FUNDING`. Each withdrawal updates the Staker TVL snapshot, activation floor, and active threshold. Withdrawals queue only after `ACTIVATED` starts the five-minute countdown. Player deposits remain refundable throughout `FUNDING`.
@@ -55,7 +57,7 @@ These items must be resolved before the custody program is implemented.
 - [x] Keep Player deposits open during the five-minute countdown at `1.00x` weight.
 
 - [x] Confirm `repos/entropy` as the selected randomness repository.
-  Devnet work must still verify its program ID, provider availability, cost, commit supply, timeout behavior, and recovery path. The repository labels itself work in progress, so source availability alone does not close those checks.
+  Mainnet readiness must still verify the deployed program, pinned source, provider availability, cost, commit supply, timeout behavior, and recovery path. Fate does not deploy or depend on Entropy on localnet or devnet.
 
 
 
@@ -63,7 +65,7 @@ These items must be resolved before the custody program is implemented.
 
 - [x] Convert every percentage to integer basis points or parts per million. Never calculate payouts with floating point on-chain.
 - [x] Define a single rounding policy: all divisions round down, and remaining lamports go to the protocol treasury.
-- [x] Calculate activation from the immutable Staker TVL snapshot and first-Player timestamp.
+- [x] Calculate activation from the first-Player timestamp and the funding Staker TVL snapshot: queued deposits cannot raise it, while immediate Staker withdrawals reduce it.
 - [x] Calculate the threshold as:
   ```text
   initial = 1% * staker_tvl_snapshot
@@ -104,7 +106,7 @@ Keep the code under `workspace/fate` without creating extra packages until they 
 
 ```text
 fate/
-  app/                  Next.js application and keeper script (planned)
+  app/                  Keeper script and planned Next.js application
   api/                  Steel state, instructions, errors, events, and Rust SDK
   program/              Solana instruction handlers
   program/tests/        SVM and SBF program integration tests
@@ -138,8 +140,9 @@ Start with fixed-size registries. This bounds account rent, transaction compute,
 - [x] Store the ten latest settled draw IDs in a fixed ring buffer in `Config`.
 - [x] Derive every PDA from fixed prefixes and explicit IDs.
 - [x] Calculate account rent and publish it in the technical notes.
+- [ ] Bound long-term rent by closing each `PlayerRegistry` as soon as its liabilities are zero and each `Draw` after it leaves the ten-result history window; return rent only to the recorded payer.
 - [ ] Benchmark 512 Stakers and 116 Players against Solana compute limits.
-- [ ] Lower capacities if the maximum settlement cannot complete with a safety margin.
+- [ ] Freeze or lower capacities only after the maximum-settlement benchmark demonstrates an acceptable safety margin.
 
 
 
@@ -158,7 +161,7 @@ Start with fixed-size registries. This bounds account rent, transaction compute,
 - [x] `settle_draw_dev`: in an explicitly feature-gated localnet/devnet build, alternate deterministic Player and Staker fixtures, select exactly one wallet, settle custody, and atomically create the next draw.
 - [ ] `settle_draw`: replace only the dev fixture source with a verified mainnet Entropy CPI/account gate before production deployment.
 - [x] On a Player win, move the full payout into the winner's claimable balance.
-- [x] On a Staker win, add the 65% distribution to vault assets and mint jackpot value to the selected Staker without changing other Stakers' ownership fraction.
+- [x] On a Staker win, add the 65% distribution to vault assets and mint jackpot shares without reducing other Stakers' ownership value; use an exact withdrawal liability for a sub-share jackpot.
 - [x] After settlement, price and execute queued Staker withdrawals.
 - [x] `claim_stake_withdrawal`: pay a Staker's frozen post-settlement withdrawal liability without depending on pause or the current draw.
 - [x] After settlement, mint shares for queued Staker deposits at the post-settlement share price.
@@ -166,6 +169,7 @@ Start with fixed-size registries. This bounds account rent, transaction compute,
 - [x] `pause`: stop new deposits and activation.
 - [x] `unpause`: reopen new deposits and activation.
 - [x] Ensure pause never blocks pending Player refunds, Staker exits, locked-draw settlement, or claims.
+- [ ] Add permissionless storage cleanup that closes a liability-free `PlayerRegistry` and an expired `Draw` only after its history-retention window, returning rent to the recorded payer.
 - [ ] Emit compact events for deposits, refunds, activation, lock, settlement, queued Staker actions, claims, and pause changes.
 
 
@@ -182,11 +186,11 @@ Build order decision: localnet and devnet use a deterministic settlement fixture
 - [x] Derive separate side and winner samples with domain-separated Keccak hashes containing the draw ID.
 - [x] Use rejection sampling to prevent modulo bias in side and weighted-wallet selection.
 - [ ] Prevent reuse of one Entropy result across draw IDs.
-- [ ] Define a permissionless two-minute retry path that is compatible with Entropy's commit chain.
+- [ ] Define a bounded permissionless retry or void-and-refund path whose timing is derived from Entropy's slot window and provider behavior.
 - [ ] Never permit the authority or keeper to replace a valid finalized result.
-- [ ] Add a devnet integration test that opens, samples, reveals, consumes, and advances the Entropy variable.
+- [ ] Add production-path integration tests for Fate's Entropy account/CPI validation and result consumption using controlled or forked account states, without requiring an Entropy devnet deployment.
 
-Live verification on 2026-08-17 found no Entropy program at its declared ID on devnet. The same ID is verified and active on mainnet at Entropy commit `f26ae03cccab6188effb0a170b8123cf4bb54c94`, and the provider seed endpoint is responding. The current source substitutes predictable `keccak(end_at)` data when the target slot has aged out of the recent slot-hash sysvar. Fate must reject that fallback and define a bounded retry or refund path before custody implementation. See `RANDOMNESS_GATE.md`.
+Verification on 2026-08-17 found no Entropy program at its declared ID on devnet. The same ID was verified and active on mainnet at Entropy commit `f26ae03cccab6188effb0a170b8123cf4bb54c94`, and the provider seed endpoint responded. The reviewed source substitutes predictable `keccak(end_at)` data when the target slot has aged out of the recent slot-hash sysvar. Fate must reject that fallback and define a bounded retry or refund path before mainnet deployment. See `RANDOMNESS_GATE.md`.
 
 ## Program Tests
 
@@ -202,19 +206,20 @@ The lifecycle runs through the real Solana runtime. It covers multi-step genesis
 - [x] Test the larger-of-two activation floor at several Staker TVLs.
 - [ ] Test deposits immediately before and after snapshot, activation, countdown end, and settlement.
 - [ ] Test one Player, many Players, one Staker, maximum wallets, and repeat deposits from one wallet.
-- [ ] Test wallet aggregation so one wallet can win only once.
-- [ ] Test early-boost boundaries and deposits made during countdown.
-- [ ] Test Staker share-price gains, erosion, jackpot share minting, deposits, and withdrawals.
-- [ ] Test zero losing-Player deposits so a solo Player's own principal is never charged as profit.
-- [ ] Test the 5% fee on erosion.
+- [x] Test wallet aggregation so one wallet can win only once.
+- [x] Test early-boost boundaries and deposits made during countdown.
+- [x] Test Staker share-price gains, erosion, jackpot share minting, deposits, and withdrawals.
+- [x] Test zero losing-Player deposits so a solo Player's own principal is never charged as profit.
+- [x] Test the 5% fee on erosion.
 - [ ] Test every rounding remainder and overflow boundary.
 - [ ] Test malformed, substituted, duplicate, non-writable, and incorrectly owned accounts.
 - [ ] Test unauthorized administration and false Entropy accounts.
 - [ ] Test double settlement, double claim, replay, stale draw IDs, and stale randomness.
+- [ ] Test expired-account closure cannot strand refunds or claims, close a recent draw, redirect rent, or close twice.
 - [x] Test paused-state exits and locked-draw settlement.
 - [ ] Run randomized invariant tests for lamport conservation and share ownership.
-- [ ] Run `steel test`, `steel build`, and `cargo test-sbf` before devnet deployment.
-  Current non-randomness baseline passes all three; rerun after the Entropy-gated instructions are complete.
+- [x] Run `steel test`, `steel build`, and `cargo test-sbf` for the deterministic devnet baseline.
+- [ ] Rerun the full Rust, SBF, and production-artifact test matrix after the mainnet Entropy-gated instructions are complete.
 
 
 
@@ -227,15 +232,26 @@ The keeper is a small script, not a service platform. State transitions remain c
 - [ ] Use a dedicated hot fee-payer key with a limited SOL balance.
 - [x] Keep the authority and fee treasury wallet out of the keeper process.
 - [ ] Fund keeper transaction fees from protocol revenue by manual treasury transfer in v1.
-- [ ] Do not add an on-chain caller reward in v1.
+- [x] Do not add an on-chain caller reward in v1.
 - [x] Make every keeper action idempotent and harmless when another caller wins the race.
 - [x] Log transaction signature, draw ID, attempted transition, and error locally without user tracking.
+- [ ] Close eligible registry/draw storage and confirm recovered rent returns to the recorded payer before funding another long-running test batch.
+
+
+
+## Localnet Gate
+
+- [ ] Build and deploy the `dev-randomness` artifact to a clean local validator, then initialize and fully grow the program accounts.
+- [ ] Run the keeper through at least twelve consecutive draws to cover both deterministic sides, recent-history rollover, and storage cleanup.
+- [ ] Exercise deposits, refunds, activation, locking, both settlements, Player claims, Staker withdrawals, queued actions, pause-safe exits, and account closure through local RPC transactions.
+- [ ] Stop and restart the keeper during each actionable phase and confirm it resumes safely without privileged state or duplicate transitions.
+- [ ] Reconcile every localnet balance delta, fee, claim, liability, and rent refund with the Rust economic model before devnet deployment.
 
 
 
 ## Next.js Foundation
 
-- [ ] Configure Privy for Solana-only external wallets and auto-connect using `@privy-io/react-auth/solana`.
+- [ ] Configure wallet-only Privy access for Solana external wallets with `toSolanaWalletConnectors({ shouldAutoConnect: true })`; do not create embedded wallets in v1.
 - [ ] Use `@solana/kit` for RPC, subscriptions, addresses, and transaction construction where Privy supports it.
 - [ ] Add `@solana/web3.js` only if a required Privy or Entropy transaction path cannot accept Kit transactions.
 - [ ] Support one environment-selected primary RPC and ordered read fallbacks.
@@ -316,13 +332,13 @@ One segmented control changes the central action between Staker and Player. The 
 - [ ] Create separate development authority, protocol treasury, and keeper fee-payer keypairs.
 - [ ] Store the authority wallet offline when it is not changing configuration or deploying.
 - [ ] Configure a primary devnet HTTP/WSS RPC pair and at least one read fallback.
-- [ ] Deploy Entropy dependencies or record the verified existing devnet addresses.
+- [ ] Verify the deployed devnet artifact has `dev-randomness` enabled and has no live Entropy dependency.
 - [ ] Deploy the Fate program with the single development authority.
 - [ ] Initialize configuration, vault, registries, treasury, and first draw.
 - [ ] Fund the keeper fee payer with a small capped balance.
 - [ ] Run at least 1,000 automated devnet draw transitions with scripted wallets.
 - [ ] Compare devnet outcomes and balances with simulator predictions.
-- [ ] Record compute use, account rent, RPC failure rate, transaction cost, funding time, and Entropy latency.
+- [ ] Record compute use, account rent and recovery, RPC failure rate, transaction cost, funding time, and keeper transition latency.
 - [ ] Run a manual mobile-wallet test with at least two wallet providers.
 - [ ] Fix every fund-custody, liveness, fairness, or misleading-copy issue before shared testing.
 - [ ] Deploy the checked Next.js build to Vercel.
@@ -350,7 +366,7 @@ One segmented control changes the central action between Staker and Player. The 
 - [ ] A wallet can connect through Privy on mobile and desktop.
 - [ ] A Staker can deposit, see shares and current SOL value, withdraw during `FUNDING`, and queue an exit from `ACTIVATED` until settlement.
 - [ ] A Player can deposit, see exact risk and probability, refund before activation, and claim after winning.
-- [ ] A draw activates from the decayed threshold, counts down, locks, obtains Entropy, selects one wallet, and settles once.
+- [ ] A draw activates from the decayed threshold, counts down, locks, uses the deterministic fixture on devnet or verified Entropy on mainnet, selects one wallet, and settles once or follows the audited terminal recovery path.
 - [ ] Every lamport is accounted for across vaults, claims, refunds, fees, and rounding dust.
 - [ ] No administrator or keeper can choose, discard, or reroll a valid result.
 - [ ] A provider or keeper outage has a tested recovery path that does not seize user funds.

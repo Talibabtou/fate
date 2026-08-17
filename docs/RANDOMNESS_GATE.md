@@ -13,7 +13,7 @@ Fate will build and exercise the complete custody loop on localnet and devnet wi
 
 Build the dev artifact with `NO_DNA=1 cargo build-sbf --features dev-randomness`. Its `initialize` call accepts placeholder Entropy accounts because they are never read; the System Program ID may be supplied for both fields. `NO_DNA=1 steel build` produces the production artifact and restores strict executable-program, owner, and account-data checks. Both commands write `target/deploy/fate.so`, so always rebuild for the intended cluster immediately before deployment.
 
-The devnet copy should change only environment identity and provisioning behavior. Fate itself must reject predictable missed-slot fallback values so the same protection remains active when the official mainnet Entropy program is used.
+The production integration should change only the randomness source and required account/CPI validation. Fate's audited selection and settlement core must remain identical, and Fate must reject predictable missed-slot fallback values from the official mainnet Entropy program.
 
 ## Live Findings
 
@@ -63,11 +63,11 @@ The intended safe sequence is:
 8. Use rejection sampling for the 90/10 side roll and weighted-wallet roll.
 9. Reject reuse of a variable generation or finalized value.
 
-The exact target-slot offset must be measured on devnet. It should leave enough time for normal keeper delay while remaining well inside the recent slot-hash window.
+The exact target-slot offset must be derived from the reviewed mainnet implementation and validated with controlled or forked production-path tests. It should leave enough time for normal keeper delay while remaining well inside the recent slot-hash window. No Entropy devnet deployment is required.
 
 ## Recovery Rule Still Needed
 
-Before custody code is written, choose and test one terminal recovery policy:
+Before mainnet custody is enabled, choose and test one terminal recovery policy:
 
 - retry fresh Entropy generations permissionlessly while the provider is available, then void and refund the locked draw after a long provider outage; or
 - operate a reviewed Fate deployment/provider setup with an explicit availability and recovery design.
@@ -76,19 +76,19 @@ Retry logic must never settle from `keccak(end_at)`, allow an authority to repla
 
 ## Work Needed To Pass
 
-- Deploy a reviewed Entropy build to devnet under a recorded program ID.
-- Establish how the Fate variable's initial commit chain is provisioned.
+- Pin and reverify the reviewed mainnet Entropy program ID, binary, and source commit before deployment.
+- Establish how the Fate-owned mainnet variable's initial commit chain is provisioned.
 - Record provider identity, API availability, fees, commit supply, and operating assumptions.
 - Add a way for Fate to prove that the actual target slot hash was sampled.
-- Implement and test missed-slot, missing-seed, provider-outage, duplicate-reveal, and retry behavior.
-- Run an end-to-end devnet cycle: bootstrap, next, sample, reveal, consume, advance.
+- Implement and test missed-slot, missing-seed, provider-outage, duplicate-reveal, and retry or void/refund behavior with controlled or forked account states.
+- Rehearse the production integration path locally, then bootstrap and verify the Fate-owned variable as a reviewed mainnet deployment step.
 - Freeze the accepted Entropy source commit or document how upgrades are monitored and approved.
 
 ## Evidence Commands
 
 ```bash
-solana program show 3jSkUuYBoJzQPMEzTvkDFXCZUBksPamrVhrnHR9igu2X --url devnet
-solana program show 3jSkUuYBoJzQPMEzTvkDFXCZUBksPamrVhrnHR9igu2X --url mainnet-beta
+NO_DNA=1 solana program show 3jSkUuYBoJzQPMEzTvkDFXCZUBksPamrVhrnHR9igu2X --url devnet
+NO_DNA=1 solana program show 3jSkUuYBoJzQPMEzTvkDFXCZUBksPamrVhrnHR9igu2X --url mainnet-beta
 curl -fsS https://verify.osec.io/status/3jSkUuYBoJzQPMEzTvkDFXCZUBksPamrVhrnHR9igu2X
 ```
 

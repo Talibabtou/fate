@@ -127,6 +127,7 @@ The cache prefix avoids the protected macOS system Python cache path in this wor
 
 ## Build Guardrails
 
+- Never run `git add`, create commits, or push branches. Leave changes unstaged and give the user a short suggested commit message at handoff.
 - Keep edits scoped to `workspace/fate` unless reading upstream references.
 - Do not modify `repos/steel`, `repos/steel-book`, `repos/entropy`, or ORE repositories for Fate-specific behavior.
 - Do not spend Staker principal anywhere except explicit protocol erosion and user withdrawal.

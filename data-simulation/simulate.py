@@ -72,6 +72,7 @@ class Config:
     minimum_draw_pool_sol: float = 0.10
     activation_floor_pct_of_safe_tvl: float = 0.001
     minimum_player_deposit_sol: float = 0.01
+    minimum_staker_deposit_sol: float = 0.10
     player_arrivals_per_interval: float = 1.00
     pending_withdrawal_probability: float = 0.01
     funding_staker_withdrawal_probability: float = 0.001
@@ -89,6 +90,7 @@ class Config:
     initial_safe_whales: int = 5
     persistent_risk_users: int = 24
     safe_entrant_scale: float = 1.0
+    record_cumulative_draw_pnl: bool = True
 
 
 def config_for_size(protocol_size: str) -> Config:
@@ -257,7 +259,7 @@ def add_safe_user(state: State, rng: random.Random, config: Config, draw: int, a
         amount = bounded_lognormal(rng, 3.3, 0.55, 20.0, 140.0)
     else:
         amount = bounded_lognormal(rng, 0.7, 0.9, 0.15, 20.0)
-    amount *= config.capital_scale
+    amount = max(amount * config.capital_scale, config.minimum_staker_deposit_sol)
     participant = Participant(
         participant_id=participant_id,
         mode="safe",
@@ -410,6 +412,11 @@ def stochastic_count(rng: random.Random, expected: float) -> int:
     return whole + (1 if rng.random() < expected - whole else 0)
 
 
+def probability_for_minutes(probability_per_10_minutes: float, minutes: int) -> float:
+    """Scale a ten-minute event probability without changing its time hazard."""
+    return 1 - (1 - probability_per_10_minutes) ** (minutes / 10)
+
+
 def add_funding_player(
     state: State,
     rng: random.Random,
@@ -514,10 +521,14 @@ def collect_timed_funding(
         if elapsed_minutes > 7 * 24 * 60:
             raise RuntimeError("funding did not activate within the simulator safety bound")
 
+        funding_staker_withdrawal_probability = probability_for_minutes(
+            config.funding_staker_withdrawal_probability,
+            config.threshold_decay_interval_minutes,
+        )
         funding_withdrawal_ids = {
             staker.participant_id
             for staker in safe_participants
-            if rng.random() < config.funding_staker_withdrawal_probability
+            if rng.random() < funding_staker_withdrawal_probability
         }
         if len(funding_withdrawal_ids) == len(safe_participants) and safe_participants:
             funding_withdrawal_ids.remove(safe_participants[-1].participant_id)
@@ -539,10 +550,14 @@ def collect_timed_funding(
             staker_tvl_snapshot * config.activation_floor_pct_of_safe_tvl,
         )
 
+        pending_withdrawal_probability = probability_for_minutes(
+            config.pending_withdrawal_probability,
+            config.threshold_decay_interval_minutes,
+        )
         had_positions = bool(positions)
         remaining = []
         for position in positions:
-            if rng.random() < config.pending_withdrawal_probability:
+            if rng.random() < pending_withdrawal_probability:
                 position.status = "pending_withdrawn"
                 position.withdrawn_at_minute = elapsed_minutes
                 state.participants[position.participant_id].withdrawals += 1
@@ -562,7 +577,12 @@ def collect_timed_funding(
             if had_positions:
                 funding_clock_resets += 1
 
-        arrivals = stochastic_count(rng, config.player_arrivals_per_interval)
+        arrivals = stochastic_count(
+            rng,
+            config.player_arrivals_per_interval
+            * config.threshold_decay_interval_minutes
+            / 10,
+        )
         for _ in range(arrivals):
             add_funding_player(
                 state,
@@ -691,7 +711,14 @@ def settle_draw(
     threshold_decay_steps: int,
     withdrawn_positions: list[RiskPosition],
 ) -> dict[str, object]:
-    pnl_before = sum(p.cumulative_pnl for p in state.participants.values())
+    affected_participant_ids = {
+        *(participant.participant_id for participant in safe_participants),
+        *(position.participant_id for position in positions),
+    }
+    pnl_before = sum(
+        state.participants[participant_id].cumulative_pnl
+        for participant_id in affected_participant_ids
+    )
     protocol_revenue_before = state.protocol_revenue
     safe_tvl = sum(p.safe_principal for p in safe_participants)
     risk_tvl = sum(p.amount for p in positions)
@@ -794,7 +821,10 @@ def settle_draw(
             position.status = "pending_refunded"
             position.pnl = 0.0
 
-    pnl_after = sum(p.cumulative_pnl for p in state.participants.values())
+    pnl_after = sum(
+        state.participants[participant_id].cumulative_pnl
+        for participant_id in affected_participant_ids
+    )
     protocol_revenue_after = state.protocol_revenue
     conservation_error = (pnl_after - pnl_before) + (
         protocol_revenue_after - protocol_revenue_before
@@ -837,8 +867,16 @@ def settle_draw(
         "safe_erosion_paid": round(safe_erosion_paid, 9),
         "protocol_revenue_cumulative": round(state.protocol_revenue, 9),
         "value_conservation_error": round(conservation_error, 12),
-        "safe_cumulative_pnl": round(sum(p.cumulative_pnl for p in state.participants.values() if p.mode == "safe"), 9),
-        "risk_cumulative_pnl": round(sum(p.cumulative_pnl for p in state.participants.values() if p.mode == "risk"), 9),
+        "safe_cumulative_pnl": round(
+            sum(p.cumulative_pnl for p in state.participants.values() if p.mode == "safe"), 9
+        )
+        if config.record_cumulative_draw_pnl
+        else None,
+        "risk_cumulative_pnl": round(
+            sum(p.cumulative_pnl for p in state.participants.values() if p.mode == "risk"), 9
+        )
+        if config.record_cumulative_draw_pnl
+        else None,
     }
 
 
@@ -1038,12 +1076,13 @@ def write_summary(path: Path, config: Config, draw_rows: list[dict[str, object]]
 - External yield strategy: none, Staker SOL is inert
 - Player threshold: {config.risk_threshold_pct_of_safe_tvl:.2%} of active Staker TVL
 - Threshold decay: {(1 - config.threshold_decay_factor):.0%} every {config.threshold_decay_interval_minutes} minutes
-- Player arrivals per funding interval: {config.player_arrivals_per_interval:.2f}
-- Pending Player withdrawal probability per interval: {config.pending_withdrawal_probability:.2%}
-- Staker withdrawal probability per funding interval: {config.funding_staker_withdrawal_probability:.2%}
+- Player arrivals per 10 funding minutes: {config.player_arrivals_per_interval:.2f}
+- Pending Player withdrawal probability per 10 minutes: {config.pending_withdrawal_probability:.2%}
+- Staker withdrawal probability per 10 funding minutes: {config.funding_staker_withdrawal_probability:.2%}
 - Staker withdrawal-request probability during countdown: {config.countdown_staker_withdrawal_probability:.2%}
 - Activation floor: max({config.minimum_draw_pool_sol:.2f} SOL, {config.activation_floor_pct_of_safe_tvl:.2%} of Staker TVL)
 - Minimum Player deposit: {config.minimum_player_deposit_sol:.2f} SOL
+- Minimum Staker deposit: {config.minimum_staker_deposit_sol:.2f} SOL
 - Countdown: {config.countdown_minutes} minute(s)
 - Player side win probability: {config.target_risk_probability:.2%}
 - Staker side win probability: {1 - config.target_risk_probability:.2%}
@@ -1112,6 +1151,7 @@ def parse_args() -> Config:
     parser.add_argument("--minimum-draw-pool-sol", type=float, default=0.10)
     parser.add_argument("--activation-floor-pct-of-safe-tvl", type=float, default=0.001)
     parser.add_argument("--minimum-player-deposit-sol", type=float, default=0.01)
+    parser.add_argument("--minimum-staker-deposit-sol", type=float, default=0.10)
     parser.add_argument("--player-arrivals-per-interval", type=float)
     parser.add_argument("--pending-withdrawal-probability", type=float, default=0.01)
     parser.add_argument("--funding-staker-withdrawal-probability", type=float, default=0.001)
@@ -1155,6 +1195,7 @@ def parse_args() -> Config:
     config.minimum_draw_pool_sol = args.minimum_draw_pool_sol
     config.activation_floor_pct_of_safe_tvl = args.activation_floor_pct_of_safe_tvl
     config.minimum_player_deposit_sol = args.minimum_player_deposit_sol
+    config.minimum_staker_deposit_sol = args.minimum_staker_deposit_sol
     config.player_arrivals_per_interval = (
         args.player_arrivals_per_interval
         if args.player_arrivals_per_interval is not None

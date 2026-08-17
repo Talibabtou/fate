@@ -8,6 +8,8 @@ from simulate import (
     State,
     add_position,
     config_for_size,
+    initialize_state,
+    probability_for_minutes,
     quote_risk_positions,
     run_simulation,
     settle_draw,
@@ -15,6 +17,28 @@ from simulate import (
 
 
 class FateSimulationTests(unittest.TestCase):
+    def test_interval_probability_keeps_the_same_time_hazard(self) -> None:
+        ten_minute_probability = 0.01
+        five_minute_probability = probability_for_minutes(ten_minute_probability, 5)
+        self.assertAlmostEqual(
+            1 - (1 - five_minute_probability) ** 2,
+            ten_minute_probability,
+        )
+
+    def test_minimum_staker_deposit(self) -> None:
+        config = config_for_size("small")
+        state = initialize_state(config, random.Random(config.seed))
+        stakers = [
+            participant
+            for participant in state.participants.values()
+            if participant.mode == "safe"
+        ]
+        self.assertTrue(stakers)
+        self.assertGreaterEqual(
+            min(participant.safe_principal for participant in stakers),
+            config.minimum_staker_deposit_sol,
+        )
+
     def test_minimum_player_deposit_and_countdown_boost(self) -> None:
         config = Config()
         participant = Participant("risk_1", "risk", "occasional_risk", bankroll=1.0)

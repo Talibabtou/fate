@@ -10,13 +10,18 @@ import {
   DrawPhase,
   decodeConfig,
   decodeDraw,
-  decodePlayerRegistry,
+  decodePlayerPosition,
+  decodeStakerPosition,
+  decodeWeightPage,
+  devSettlementParticipants,
   dueAction,
   fateAddresses,
   type KeeperAction,
   keeperInstruction,
-  PLAYER_REGISTRY_SIZE,
+  PLAYER_POSITION_SIZE,
   RECENT_DRAW_CAPACITY,
+  STAKER_POSITION_SIZE,
+  WEIGHT_PAGE_SIZE,
 } from "./fate-client.ts";
 
 const DEVNET_GENESIS_HASH = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
@@ -127,6 +132,7 @@ type CleanupCandidate = {
   action: CleanupAction;
   drawId: bigint;
   rentPayer: Address;
+  target?: Address;
 };
 
 async function main() {
@@ -211,11 +217,16 @@ async function main() {
         }
         let instruction: Instruction;
         if (action) {
+          const participants =
+            action === "settle"
+              ? await findSettlementParticipants(client, config.programAddress, draw.id)
+              : undefined;
           instruction = await keeperInstruction(
             action,
             config.programAddress,
             client.payer.address,
             fateConfig,
+            participants,
           );
         } else {
           if (!cleanup) throw new Error("keeper cleanup selection disappeared");
@@ -224,6 +235,7 @@ async function main() {
             config.programAddress,
             cleanup.rentPayer,
             cleanup.drawId,
+            cleanup.target,
           );
         }
         log("transition_submitting", {
@@ -255,6 +267,7 @@ async function main() {
               config.programAddress,
               cleanup.drawId,
               cleanup.action,
+              cleanup.target,
             );
           }
           if (!alreadyApplied) {
@@ -283,39 +296,72 @@ async function findCleanupCandidate(
   programAddress: Address,
   config: ReturnType<typeof decodeConfig>,
 ): Promise<CleanupCandidate | null> {
-  const registries = await client.rpc
+  const positions = await client.rpc
     .getProgramAccounts(programAddress, {
       commitment: "confirmed",
       encoding: "base64",
-      filters: [{ dataSize: BigInt(PLAYER_REGISTRY_SIZE) }],
+      filters: [{ dataSize: BigInt(PLAYER_POSITION_SIZE) }],
     })
     .send();
-  const emptyRegistries = registries
-    .flatMap((account) => {
-      try {
-        const registry = decodePlayerRegistry(decodeRpcData(account.account.data));
-        return registry.isEmpty ? [registry] : [];
-      } catch {
-        return [];
-      }
-    })
-    .sort((left, right) => (left.drawId < right.drawId ? -1 : left.drawId > right.drawId ? 1 : 0));
-
-  for (const registry of emptyRegistries) {
-    const drawAddress = (await fateAddresses(programAddress, registry.drawId)).draw;
+  for (const account of positions) {
+    let position: ReturnType<typeof decodePlayerPosition>;
+    try {
+      position = decodePlayerPosition(decodeRpcData(account.account.data));
+    } catch {
+      continue;
+    }
+    const drawAddress = (await fateAddresses(programAddress, position.drawId)).draw;
     const response = await client.rpc
       .getAccountInfo(drawAddress, { commitment: "confirmed", encoding: "base64" })
       .send();
     if (!response.value || response.value.owner !== programAddress) continue;
     const draw = decodeDraw(decodeRpcData(response.value.data));
-    if (
-      draw.id === registry.drawId &&
-      (draw.phase === DrawPhase.Settled || draw.phase === DrawPhase.Voided) &&
-      draw.playerTvlLamports === 0n &&
-      draw.outstandingPlayerClaimLamports === 0n &&
-      draw.id < config.currentDrawId
-    ) {
-      return { action: "close-registry", drawId: draw.id, rentPayer: draw.rentPayer };
+    const settled = draw.phase === DrawPhase.Settled;
+    const voidRefunded =
+      draw.phase === DrawPhase.Voided &&
+      position.refundableLamports === 0n &&
+      position.committedLamports === 0n;
+    if ((settled || voidRefunded) && position.claimableLamports === 0n) {
+      return {
+        action: "close-player-position",
+        drawId: position.drawId,
+        rentPayer: position.rentPayer,
+        target: account.pubkey,
+      };
+    }
+  }
+
+  const pages = await client.rpc
+    .getProgramAccounts(programAddress, {
+      commitment: "confirmed",
+      encoding: "base64",
+      filters: [{ dataSize: BigInt(WEIGHT_PAGE_SIZE) }],
+    })
+    .send();
+  for (const account of pages) {
+    let page: ReturnType<typeof decodeWeightPage>;
+    try {
+      page = decodeWeightPage(decodeRpcData(account.account.data));
+    } catch {
+      continue;
+    }
+    const response = await client.rpc
+      .getAccountInfo(page.tree, { commitment: "confirmed", encoding: "base64" })
+      .send();
+    if (!response.value || response.value.owner !== programAddress) continue;
+    let draw: ReturnType<typeof decodeDraw>;
+    try {
+      draw = decodeDraw(decodeRpcData(response.value.data));
+    } catch {
+      continue;
+    }
+    if (draw.phase === DrawPhase.Settled || draw.phase === DrawPhase.Voided) {
+      return {
+        action: "close-weight-page",
+        drawId: draw.id,
+        rentPayer: page.rentPayer,
+        target: account.pubkey,
+      };
     }
   }
 
@@ -340,21 +386,52 @@ async function findCleanupCandidate(
         (candidate.phase === DrawPhase.Settled || candidate.phase === DrawPhase.Voided) &&
         candidate.playerTvlLamports === 0n &&
         candidate.outstandingPlayerClaimLamports === 0n &&
+        candidate.openPlayerPositions === 0n &&
         config.currentDrawId - candidate.id > RECENT_DRAW_CAPACITY &&
         !recent.has(candidate.id),
     )
     .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
 
-  for (const draw of expired) {
-    const registryAddress = (await fateAddresses(programAddress, draw.id)).players;
-    const response = await client.rpc
-      .getAccountInfo(registryAddress, { commitment: "confirmed", encoding: "base64" })
-      .send();
-    if (!response.value) {
-      return { action: "close-draw", drawId: draw.id, rentPayer: draw.rentPayer };
+  const draw = expired[0];
+  return draw ? { action: "close-draw", drawId: draw.id, rentPayer: draw.rentPayer } : null;
+}
+
+async function findSettlementParticipants(
+  client: KeeperClient,
+  programAddress: Address,
+  drawId: bigint,
+) {
+  const [playerAccounts, stakerAccounts] = await Promise.all([
+    client.rpc
+      .getProgramAccounts(programAddress, {
+        commitment: "confirmed",
+        encoding: "base64",
+        filters: [{ dataSize: BigInt(PLAYER_POSITION_SIZE) }],
+      })
+      .send(),
+    client.rpc
+      .getProgramAccounts(programAddress, {
+        commitment: "confirmed",
+        encoding: "base64",
+        filters: [{ dataSize: BigInt(STAKER_POSITION_SIZE) }],
+      })
+      .send(),
+  ]);
+  const players = playerAccounts.flatMap((account) => {
+    try {
+      return [decodePlayerPosition(decodeRpcData(account.account.data))];
+    } catch {
+      return [];
     }
-  }
-  return null;
+  });
+  const stakers = stakerAccounts.flatMap((account) => {
+    try {
+      return [decodeStakerPosition(decodeRpcData(account.account.data))];
+    } catch {
+      return [];
+    }
+  });
+  return devSettlementParticipants(drawId, players, stakers);
 }
 
 async function transitionAlreadyApplied(
@@ -384,12 +461,12 @@ async function cleanupAlreadyApplied(
   client: KeeperClient,
   programAddress: Address,
   drawId: bigint,
-  action: CleanupAction,
+  _action: CleanupAction,
+  target?: Address,
 ) {
   const addresses = await fateAddresses(programAddress, drawId);
-  const addressToCheck = action === "close-registry" ? addresses.players : addresses.draw;
   const response = await client.rpc
-    .getAccountInfo(addressToCheck, { commitment: "confirmed", encoding: "base64" })
+    .getAccountInfo(target ?? addresses.draw, { commitment: "confirmed", encoding: "base64" })
     .send();
   return response.value === null;
 }

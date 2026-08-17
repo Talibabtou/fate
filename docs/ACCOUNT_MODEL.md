@@ -2,81 +2,66 @@
 
 Build status and implementation order are tracked in [BUILD_PLAN.md](BUILD_PLAN.md).
 
-Checked against Solana devnet: 2026-08-17
-
-Fate uses fixed Steel accounts and one Player custody account per draw. All tracked asset fields exclude rent lamports.
+Fate has no small protocol-level participant cap. It follows the scalable Solana pattern: global aggregate state, one PDA per wallet position, and lazy wallet updates. A verified weighted index replaces registry scans because Fate must select one weighted winner while still supporting Player refunds and Staker withdrawals.
 
 ## Accounts
 
-| Account | Data size | Devnet rent-exempt minimum | Lifetime |
+| Account | Size | Approx. rent | Lifetime |
 |---|---:|---:|---|
 | `Config` | 256 bytes | 0.00267264 SOL | Persistent |
-| `StakerVault` | 64 bytes | 0.00133632 SOL | Persistent |
-| `StakerRegistry` | 40,976 bytes | 0.28608384 SOL | Persistent |
-| `Draw` | 320 bytes | 0.00311808 SOL | Retain for recent results, then close |
-| `PlayerRegistry` | 10,232 bytes | 0.07210560 SOL | One per draw; retain while refunds or a claim remain |
+| `StakerVault` | 56 bytes | 0.00128064 SOL | Persistent custody and share totals |
+| `StakerPosition` | 112 bytes | 0.00167040 SOL | One per Staker wallet |
+| `Draw` | 344 bytes | 0.00328512 SOL | Per draw; also holds Player SOL |
+| `PlayerPosition` | 144 bytes | 0.00189312 SOL | One per Player wallet and draw |
+| `WeightPage` | 344 bytes | 0.00328512 SOL | Shared radix-16 index page |
 
-Initial configuration plus the first draw costs approximately `0.36531648 SOL` in refundable account rent. Each additional live `Draw` and `PlayerRegistry` pair costs approximately `0.07522368 SOL`. Query rent again before deployment because cluster economics can change.
+Rent figures use the devnet schedule checked on 2026-08-17; query the target cluster again before deployment.
 
-The persistent Staker registry exceeds Solana's 10,240-byte per-instruction account-growth limit. Genesis creates it as an 8-byte, program-owned bootstrap account, then the authority runs five ordered `grow_program_accounts` steps. Each step grows by at most 10,240 bytes and funds only the new rent deficit. The fifth step marks `Config.version` ready, and every operational instruction rejects the incomplete version. The Player cap is deliberately 116 so its 10,232-byte registry and every following draw can be created atomically.
+## Weighted Index
 
-## Custody
+Each tree has eight radix-16 levels and therefore a `u32` leaf namespace: 4,294,967,296 possible positions. A deposit or withdrawal updates eight pages. Settlement receives and verifies the selected path rather than scanning participants. Every page is bound to its tree, level, prefix, canonical PDA, and recorded rent payer.
 
-- `StakerVault` holds Staker SOL plus its own rent reserve. `active_assets_lamports`, `pending_assets_lamports`, and `withdrawal_liability_lamports` never include rent.
-- Queued Staker exits remain represented by shares until settlement. Settlement burns those shares at the post-result price and freezes the resulting SOL in `withdrawal_liability_lamports`, which cannot be exposed to later draws.
-- Each `PlayerRegistry` holds that draw's refundable deposits, committed deposits, or winner claim plus its rent reserve.
-- `Config`, `StakerRegistry`, and `Draw` hold only their rent reserves.
-- Protocol fees leave custody accounts during settlement and go to the configured fee treasury.
-- A transaction must never transfer an account below its rent reserve or below its tracked user liabilities.
+Sequential leaf allocation makes pages cheap to share: the first position creates the eight-page spine, while a new leaf-level page is needed only once per 16 positions. The root remains one writable hotspot; sharding is deferred until measured contention justifies it.
 
-On a Player win, erosion moves from `StakerVault` to the draw's `PlayerRegistry`; the fee moves to the treasury; the remaining payout stays claimable in the registry. On a Staker win, the Player registry transfers the jackpot and pro-rata amounts into `StakerVault` and the fee into the treasury.
+## Custody And Shares
 
-Settlement prices every queued exit against the same post-result share price, burns those shares, and converts the resulting SOL into a fixed liability before pending deposits become active. Pending deposits then mint at one common post-exit price. On a Staker jackpot, new shares are rounded down so their mint can never reduce the value of existing shares; any representation dust remains in the active vault. If a jackpot is smaller than one share at the current price, it becomes an exact withdrawal liability for the selected Staker instead.
+- `StakerVault` holds Staker SOL, active-asset accounting, exact withdrawal liabilities, and total shares.
+- `Draw` holds refundable/committed Player SOL and any outstanding Player winner claim.
+- Position and weight accounts contain state and refundable rent only; they do not custody pooled principal.
+- Every value-moving instruction preserves the account rent reserve and checks tracked liabilities against actual lamports.
 
-## Fixed Registries
-
-- `StakerRegistry` contains 512 entries of 80 bytes.
-- `PlayerRegistry` contains 116 entries of 88 bytes.
-- One wallet occupies at most one entry in each registry.
-- Repeat deposits aggregate into the existing wallet entry.
-- Empty entries can be reused.
-- Player boosted weight is stored as two little-endian `u64` words representing one `u128`.
-- Unknown phases and invalid enum values fail closed.
-
-These capacities are storage limits for the first devnet build. Maximum-capacity settlement still needs a compute benchmark before they become final deployment limits.
-
-## Share Accounting
-
-The Staker vault stores assets and shares as `u64`, with multiplication performed through `u128` intermediates:
+Staker share math remains:
 
 ```text
 deposit_shares = floor(deposit_lamports * total_shares / active_assets)
 withdrawal_lamports = floor(shares * active_assets / total_shares)
 ```
 
-The first deposit mints one share per lamport. Player losses increase `active_assets_lamports` without minting shares. Erosion decreases assets without burning shares. Both therefore change the SOL value of every existing share automatically.
+Player losses raise share value without touching every Staker. Erosion lowers share value the same way. A Staker jackpot mints shares only to the verified winner; if the jackpot is smaller than one share, it becomes an exact claim liability.
 
-## Closure
+## Timing Consequence
 
-Two permissionless instructions now reclaim bounded per-draw storage. `close_player_registry` is available only after settlement or voiding when every Player position and tracked liability is zero. `close_draw` is available only after its registry is closed and the draw has left the ten-result history. Both verify the canonical PDA, exact account type, lifecycle state, and the refund address stored in `Draw.rent_payer`.
+Player refunds and Staker withdrawals update the tree during `FUNDING`. New Staker deposits close after the first Player enters, and Staker positions freeze from activation through settlement. This removes the old settlement-time registry scan and queued-action scan. The bounded Staker lock is the five-minute countdown plus permissionless settlement time.
 
-- A Staker entry may be reused only when active shares, pending deposits, queued withdrawals, and claimable withdrawal SOL are all zero.
-- A Player entry may be reused only when refundable deposits, committed deposits, and claims are all zero.
-- A Staker-side settlement can close its Player registry after settlement because no Player claim remains.
-- A Player-side settlement retains its Player registry until the winner claims.
-- A voided draw retains its Player registry until all refunds finish.
-- Account rent returns only to the recorded rent payer, never to a keeper or settlement caller.
-- Claims and refunds do not expire.
+Funding-era Player amounts remain refundable in their position account; activation commits them logically by closing refunds. No per-Player rewrite is required. Countdown deposits are recorded as committed immediately.
+
+## Cleanup
+
+Cleanup is permissionless but rent always returns to the payer recorded in the account:
+
+- `close_player_position` closes a settled position after any winner claim, or a fully refunded voided position.
+- `close_weight_page` closes a draw-scoped Player tree page after settlement or voiding.
+- `close_draw` requires zero Player positions, zero Player weight pages, zero claims, and expiry from the ten-result history.
+- Persistent Staker positions and Staker tree pages remain reusable.
 
 ## PDA Domains
 
 ```text
 config
 staker-vault
-staker-registry
+staker-position + authority
 draw + draw_id
-player-registry + draw_id
+player-position + draw_id + authority
+weight-page + tree + level + prefix
 entropy-authority
 ```
-
-PDA helpers accept an explicit Fate program ID. This permits separate devnet and mainnet Fate deployments without allowing an initialized program to switch dependencies dynamically.

@@ -13,11 +13,13 @@ pub enum FateInstruction {
     Unpause = 7,
     ClaimPlayer = 8,
     ClaimStakeWithdrawal = 9,
-    GrowProgramAccounts = 10,
+    ReservedGrowProgramAccounts = 10,
     LockDraw = 11,
     SettleDrawDev = 12,
-    ClosePlayerRegistry = 13,
+    ReservedClosePlayerRegistry = 13,
     CloseDraw = 14,
+    ClosePlayerPosition = 15,
+    CloseWeightPage = 16,
 }
 
 #[repr(C)]
@@ -70,12 +72,6 @@ pub struct ClaimStakeWithdrawal {}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
-pub struct GrowProgramAccounts {
-    pub step: [u8; 8],
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct LockDraw {}
 
 /// Deterministic localnet/devnet fixture. The production program rejects this
@@ -86,13 +82,19 @@ pub struct SettleDrawDev {}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
-pub struct ClosePlayerRegistry {
+pub struct CloseDraw {
     pub draw_id: [u8; 8],
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
-pub struct CloseDraw {
+pub struct ClosePlayerPosition {
+    pub draw_id: [u8; 8],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct CloseWeightPage {
     pub draw_id: [u8; 8],
 }
 
@@ -106,11 +108,11 @@ instruction!(FateInstruction, Pause);
 instruction!(FateInstruction, Unpause);
 instruction!(FateInstruction, ClaimPlayer);
 instruction!(FateInstruction, ClaimStakeWithdrawal);
-instruction!(FateInstruction, GrowProgramAccounts);
 instruction!(FateInstruction, LockDraw);
 instruction!(FateInstruction, SettleDrawDev);
-instruction!(FateInstruction, ClosePlayerRegistry);
 instruction!(FateInstruction, CloseDraw);
+instruction!(FateInstruction, ClosePlayerPosition);
+instruction!(FateInstruction, CloseWeightPage);
 
 #[cfg(test)]
 mod tests {
@@ -191,16 +193,6 @@ mod tests {
     }
 
     #[test]
-    fn grow_program_accounts_wire_format_is_stable() {
-        let bytes = GrowProgramAccounts {
-            step: 3u64.to_le_bytes(),
-        }
-        .to_bytes();
-        assert_eq!(bytes[0], FateInstruction::GrowProgramAccounts as u8);
-        assert_eq!(&bytes[1..], &3u64.to_le_bytes());
-    }
-
-    #[test]
     fn draw_progression_wire_formats_are_stable() {
         assert_eq!(LockDraw {}.to_bytes(), [FateInstruction::LockDraw as u8]);
         assert_eq!(
@@ -211,24 +203,11 @@ mod tests {
 
     #[test]
     fn storage_cleanup_wire_formats_are_stable() {
-        for (bytes, discriminator) in [
-            (
-                ClosePlayerRegistry {
-                    draw_id: 42u64.to_le_bytes(),
-                }
-                .to_bytes(),
-                FateInstruction::ClosePlayerRegistry as u8,
-            ),
-            (
-                CloseDraw {
-                    draw_id: 42u64.to_le_bytes(),
-                }
-                .to_bytes(),
-                FateInstruction::CloseDraw as u8,
-            ),
-        ] {
-            assert_eq!(bytes[0], discriminator);
-            assert_eq!(&bytes[1..], &42u64.to_le_bytes());
+        let bytes = CloseDraw {
+            draw_id: 42u64.to_le_bytes(),
         }
+        .to_bytes();
+        assert_eq!(bytes[0], FateInstruction::CloseDraw as u8);
+        assert_eq!(&bytes[1..], &42u64.to_le_bytes());
     }
 }

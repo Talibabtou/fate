@@ -11,10 +11,10 @@ import {
   DrawPhase,
   decodeConfig,
   decodeDraw,
-  decodePlayerRegistry,
+  decodePlayerPosition,
   dueAction,
-  PLAYER_REGISTRY_DISCRIMINATOR,
-  PLAYER_REGISTRY_SIZE,
+  PLAYER_POSITION_DISCRIMINATOR,
+  PLAYER_POSITION_SIZE,
 } from "./fate-client.ts";
 
 function setU64(data: Uint8Array, offset: number, value: bigint) {
@@ -63,18 +63,26 @@ test("decodes validated Steel config and draw layouts", () => {
     stakerTvlSnapshot: 1_000_000_000n,
     playerTvlLamports: 100_000_000n,
     outstandingPlayerClaimLamports: 50_000_000n,
+    openPlayerPositions: 0n,
   });
 
-  const registryData = new Uint8Array(PLAYER_REGISTRY_SIZE);
-  registryData[0] = PLAYER_REGISTRY_DISCRIMINATOR;
-  setU64(registryData, 8, 7n);
-  assert.deepEqual(decodePlayerRegistry(registryData), {
+  const positionData = new Uint8Array(PLAYER_POSITION_SIZE);
+  positionData[0] = PLAYER_POSITION_DISCRIMINATOR;
+  positionData.set(getAddressEncoder().encode(treasury), 8);
+  setU64(positionData, 72, 42n);
+  setU64(positionData, 88, 7n);
+  setU64(positionData, 96, 10n);
+  setU64(positionData, 128, 3n);
+  assert.deepEqual(decodePlayerPosition(positionData), {
+    authority: treasury,
+    rentPayer: treasury,
     drawId: 7n,
-    occupiedEntries: 0n,
-    isEmpty: true,
+    weight: 42n,
+    refundableLamports: 10n,
+    committedLamports: 0n,
+    leafIndex: 3n,
+    claimableLamports: 0n,
   });
-  registryData[24] = 1;
-  assert.equal(decodePlayerRegistry(registryData).isEmpty, false);
 });
 
 test("rejects account cosplay and malformed lengths", () => {
@@ -101,6 +109,7 @@ test("keeper chooses only due permissionless transitions", () => {
     stakerTvlSnapshot: 100_000_000_000n,
     playerTvlLamports: 1_000_000_000n,
     outstandingPlayerClaimLamports: 0n,
+    openPlayerPositions: 0n,
   };
   assert.equal(dueAction(config, draw, 1_000n), "activate");
   assert.equal(dueAction({ ...config, paused: true }, draw, 1_000n), null);
@@ -118,21 +127,16 @@ test("keeper chooses only due permissionless transitions", () => {
 test("cleanup instructions are permissionless and bind the draw ID", async () => {
   const programAddress = address("1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM");
   const rentPayer = address("11111111111111111111111111111111");
-  for (const [action, discriminator] of [
-    ["close-registry", 13],
-    ["close-draw", 14],
-  ] as const) {
-    const instruction = await cleanupInstruction(action, programAddress, rentPayer, 7n);
-    const data = instruction.data;
-    assert.ok(data);
-    assert.equal(data[0], discriminator);
-    assert.equal(new DataView(data.buffer).getBigUint64(1, true), 7n);
-    assert.equal(
-      instruction.accounts?.some((account) => account.role === AccountRole.WRITABLE_SIGNER),
-      false,
-    );
-    assert.equal(instruction.accounts?.[3].address, rentPayer);
-  }
+  const instruction = await cleanupInstruction("close-draw", programAddress, rentPayer, 7n);
+  const data = instruction.data;
+  assert.ok(data);
+  assert.equal(data[0], 14);
+  assert.equal(new DataView(data.buffer).getBigUint64(1, true), 7n);
+  assert.equal(
+    instruction.accounts?.some((account) => account.role === AccountRole.WRITABLE_SIGNER),
+    false,
+  );
+  assert.equal(instruction.accounts?.[2].address, rentPayer);
 });
 
 test("activation threshold matches the on-chain floor and decay", () => {

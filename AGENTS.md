@@ -50,13 +50,13 @@ For Solana program, client, RPC, testing, or deployment work, use the globally i
 - Funding has no expiry.
 - A pending Player may refund their entire position during `FUNDING`.
 - If every Player refunds, reset the funding clock and snapshot.
-- Stakers may withdraw immediately during `FUNDING`. Each withdrawal must recalculate the Staker snapshot, floor, and live activation threshold.
-- New Staker deposits made after the first Player enters are queued for the next draw.
+- Stakers may withdraw immediately during `FUNDING`. Each withdrawal recalculates the Staker snapshot, floor, and live activation threshold. The final active Staker cannot exit while Player funds are present.
+- New Staker deposits close when the first Player enters and reopen with the next draw.
 - Once the target is met, enter `ACTIVATED` and start a five-minute countdown.
-- Staker withdrawals requested from `ACTIVATED` through settlement are queued and execute after settlement.
+- Staker positions freeze from `ACTIVATED` through settlement; this bounded lock is required so winner weights cannot change after commitment.
 - Player deposits remain open during the countdown, commit immediately, and receive `1.00x` weight.
 - Early funding deposits can receive up to `1.50x` Player winner weight. The boost affects only the winner within the Player side, never the fixed 90% side probability.
-- At countdown end, lock deposits, obtain randomness, settle once, process queued Staker actions, and open the next draw.
+- At countdown end, lock deposits, obtain randomness, settle once, and open the next draw.
 
 The `0.01 SOL` minimum can remain below the activation floor because no capital is trapped during `FUNDING`: Stakers can withdraw and Players can refund. The UI must not imply that activation is guaranteed at a particular time.
 
@@ -78,9 +78,10 @@ The `0.01 SOL` minimum can remain below the activation floor because no capital 
 
 ## Capacity
 
-The v1 plan starts with fixed registries of at most 512 active Staker wallets and 116 Player wallets per draw. These are engineering limits, not economic caps. They bound account storage and winner-selection compute in one Solana transaction.
-
-Benchmark maximum-capacity settlement before fixing these values. Lower them if settlement lacks compute margin. Do not add a sum tree or proof system until measured usage requires more capacity.
+- Never put participant arrays in one shared account or scan every participant during settlement.
+- Use one PDA per Staker wallet, one PDA per Player wallet/draw, and the authenticated radix-16 weighted index.
+- Each operation touches one wallet and an eight-page path; activation and lock are constant-time, and settlement verifies one path per side.
+- The `u32` leaf namespace supports 4,294,967,296 positions per tree. Treat this as address-space exhaustion, not a product participant cap.
 
 ## Web App
 
@@ -107,7 +108,7 @@ Benchmark maximum-capacity settlement before fixing these values. Lower them if 
 
 ## Immediate Work Order
 
-1. Finish adversarial tests, invariant coverage, and maximum-capacity benchmarks for the deterministic Steel program.
+1. Finish adversarial tests, invariant coverage, and weighted-path compute/packet benchmarks for the deterministic Steel program.
 2. Run the keeper and complete custody loop on localnet, then deploy the feature-gated deterministic artifact to devnet.
 3. Build the Next.js app against confirmed localnet/devnet state and exercise the full wallet flow.
 4. Run long devnet batches and compare balances and outcomes with the simulator.

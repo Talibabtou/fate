@@ -5,10 +5,10 @@ mod activate_draw;
 mod claim_player;
 mod claim_stake_withdrawal;
 mod close_draw;
-mod close_player_registry;
+mod close_player_position;
+mod close_weight_page;
 mod deposit_player;
 mod deposit_stake;
-mod grow_program_accounts;
 mod initialize;
 mod lock_draw;
 mod refund_player;
@@ -16,16 +16,17 @@ mod request_stake_withdrawal;
 mod set_pause;
 #[cfg(feature = "dev-randomness")]
 mod settle_draw_dev;
+mod weight_tree;
 
 use activate_draw::*;
 use claim_player::*;
 use claim_stake_withdrawal::*;
 use close_draw::*;
-use close_player_registry::*;
+use close_player_position::*;
+use close_weight_page::*;
 use deposit_player::*;
 use deposit_stake::*;
 use fate_api::prelude::*;
-use grow_program_accounts::*;
 use initialize::*;
 use lock_draw::*;
 use refund_player::*;
@@ -57,9 +58,7 @@ pub fn process_instruction(
         FateInstruction::ClaimStakeWithdrawal => {
             process_claim_stake_withdrawal(program_id, accounts, data)
         }
-        FateInstruction::GrowProgramAccounts => {
-            process_grow_program_accounts(program_id, accounts, data)
-        }
+        FateInstruction::ReservedGrowProgramAccounts => Err(ProgramError::InvalidInstructionData),
         FateInstruction::LockDraw => process_lock_draw(program_id, accounts, data),
         FateInstruction::SettleDrawDev => {
             #[cfg(feature = "dev-randomness")]
@@ -72,10 +71,12 @@ pub fn process_instruction(
                 Err(ProgramError::InvalidInstructionData)
             }
         }
-        FateInstruction::ClosePlayerRegistry => {
-            process_close_player_registry(program_id, accounts, data)
-        }
+        FateInstruction::ReservedClosePlayerRegistry => Err(ProgramError::InvalidInstructionData),
         FateInstruction::CloseDraw => process_close_draw(program_id, accounts, data),
+        FateInstruction::ClosePlayerPosition => {
+            process_close_player_position(program_id, accounts, data)
+        }
+        FateInstruction::CloseWeightPage => process_close_weight_page(program_id, accounts, data),
     }
 }
 

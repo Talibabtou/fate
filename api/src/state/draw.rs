@@ -51,6 +51,9 @@ pub struct Draw {
     pub staker_erosion_lamports: u64,
     pub entropy_sample_valid: u64,
     pub void_reason: u64,
+    pub next_player_index: u64,
+    pub open_player_positions: u64,
+    pub open_weight_pages: u64,
 }
 
 impl Draw {
@@ -99,6 +102,6 @@ mod tests {
 
     #[test]
     fn account_size_is_stable() {
-        assert_eq!(Draw::SIZE, 320);
+        assert_eq!(Draw::SIZE, 344);
     }
 }

@@ -15,7 +15,7 @@ pub enum FateError {
     #[error("Selection weight is zero")]
     ZeroSelectionWeight = 3,
 
-    #[error("Selected weight is outside the registry")]
+    #[error("Selected weight is outside the weighted index")]
     SelectionOutOfRange = 4,
 
     #[error("Registry is full")]
@@ -77,6 +77,12 @@ pub enum FateError {
 
     #[error("The rent refund recipient does not match the recorded payer")]
     InvalidRentRecipient = 24,
+
+    #[error("Weighted index path or page is invalid")]
+    InvalidWeightTree = 25,
+
+    #[error("The participant index space is exhausted")]
+    ParticipantIndexExhausted = 26,
 }
 
 error!(FateError);

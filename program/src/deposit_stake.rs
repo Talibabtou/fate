@@ -2,186 +2,150 @@ use fate_api::prelude::*;
 use solana_program::{rent::Rent, sysvar::Sysvar};
 use steel::*;
 
+use crate::weight_tree::{prepare_weight_path, update_weight_path};
+
 pub fn process_deposit_stake(
     program_id: &Pubkey,
     accounts: &[AccountInfo<'_>],
     data: &[u8],
 ) -> ProgramResult {
-    let args = DepositStake::try_from_bytes(data)?;
-    let amount = u64::from_le_bytes(args.amount);
+    let amount = u64::from_le_bytes(DepositStake::try_from_bytes(data)?.amount);
     if amount < MINIMUM_STAKER_DEPOSIT_LAMPORTS {
         return Err(FateError::DepositTooSmall.into());
     }
-
-    let [staker_info, config_info, draw_info, staker_vault_info, staker_registry_info, system_program_info] =
+    let [staker, config_info, draw_info, vault_info, position_info, system_program_info, pages @ ..] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
-
-    staker_info.is_signer()?.is_writable()?;
+    staker.is_signer()?.is_writable()?;
     if config_info.is_writable || draw_info.is_writable || system_program_info.is_writable {
         return Err(ProgramError::InvalidArgument);
     }
     config_info.has_seeds(&[CONFIG_SEED], program_id)?;
-    staker_vault_info
+    vault_info
         .is_writable()?
         .has_seeds(&[STAKER_VAULT_SEED], program_id)?;
-    staker_registry_info
+    position_info
         .is_writable()?
-        .has_seeds(&[STAKER_REGISTRY_SEED], program_id)?;
+        .has_seeds(&[STAKER_POSITION_SEED, staker.key.as_ref()], program_id)?;
     system_program_info.is_program(&system_program::ID)?;
 
-    if staker_info.key == staker_vault_info.key
-        || staker_info.key == staker_registry_info.key
-        || staker_vault_info.key == staker_registry_info.key
-    {
-        return Err(ProgramError::InvalidArgument);
-    }
-
     let config = config_info.as_account::<Config>(program_id)?;
-    if config.version != PROGRAM_VERSION {
-        return Err(FateError::InvalidInitializationState.into());
+    if config.version != PROGRAM_VERSION || config.is_paused() {
+        return Err(if config.is_paused() {
+            FateError::ProtocolPaused
+        } else {
+            FateError::InvalidInitializationState
+        }
+        .into());
     }
-    if config.is_paused() {
-        return Err(FateError::ProtocolPaused.into());
-    }
-
-    let draw_id_bytes = config.current_draw_id.to_le_bytes();
-    draw_info.has_seeds(&[DRAW_SEED, &draw_id_bytes], program_id)?;
+    draw_info.has_seeds(
+        &[DRAW_SEED, &config.current_draw_id.to_le_bytes()],
+        program_id,
+    )?;
     let draw = draw_info.as_account::<Draw>(program_id)?;
     if draw.id != config.current_draw_id
-        || matches!(
-            draw.phase(),
-            None | Some(DrawPhase::Settled | DrawPhase::Voided)
-        )
+        || draw.phase() != Some(DrawPhase::Funding)
+        || draw.first_player_at != 0
     {
-        return Err(FateError::InvalidDraw.into());
+        return Err(FateError::DepositsClosed.into());
     }
 
-    let queue_for_next_draw = draw.phase() != Some(DrawPhase::Funding) || draw.first_player_at != 0;
-    let vault = staker_vault_info.as_account::<StakerVault>(program_id)?;
-    let shares = if queue_for_next_draw {
-        0
-    } else {
-        let shares = vault.preview_deposit_shares(amount)?;
-        if shares == 0 {
-            return Err(FateError::InvalidShareAmount.into());
+    let vault = vault_info.as_account::<StakerVault>(program_id)?;
+    let shares = vault.preview_deposit_shares(amount)?;
+    if shares == 0 {
+        return Err(FateError::InvalidShareAmount.into());
+    }
+    let (leaf_index, old_weight, is_new) = if position_info.data_is_empty() {
+        if vault.next_position_index > MAX_PARTICIPANT_INDEX {
+            return Err(FateError::ParticipantIndexExhausted.into());
         }
-        shares
+        (vault.next_position_index, 0, true)
+    } else {
+        let position = position_info.as_account::<StakerPosition>(program_id)?;
+        if !position.is_initialized() || position.authority != *staker.key {
+            return Err(FateError::StakerPositionNotFound.into());
+        }
+        (
+            position.leaf_index,
+            u128::from(position.active_shares),
+            false,
+        )
     };
-    let registry = staker_registry_info.as_account::<StakerRegistry>(program_id)?;
-    if registry.find_index(staker_info.key).is_none()
-        && registry.occupied_entries >= MAX_STAKERS as u64
-    {
-        return Err(FateError::RegistryFull.into());
-    }
-
-    staker_vault_info.collect(amount, staker_info)?;
-
-    let vault = staker_vault_info.as_account_mut::<StakerVault>(program_id)?;
-    let registry = staker_registry_info.as_account_mut::<StakerRegistry>(program_id)?;
-    apply_staker_deposit(
-        vault,
-        registry,
-        *staker_info.key,
-        amount,
-        shares,
-        queue_for_next_draw,
+    prepare_weight_path(
+        program_id,
+        staker,
+        system_program_info,
+        vault_info,
+        leaf_index,
+        pages,
     )?;
-
-    let tracked_assets = vault
-        .active_assets_lamports
-        .checked_add(vault.pending_assets_lamports)
-        .and_then(|assets| assets.checked_add(vault.withdrawal_liability_lamports))
-        .ok_or(FateError::ArithmeticOverflow)?;
-    let rent_reserve = Rent::get()?.minimum_balance(StakerVault::SIZE);
-    let custody_assets = staker_vault_info.lamports().saturating_sub(rent_reserve);
-    if custody_assets < tracked_assets {
-        return Err(FateError::InsufficientCustody.into());
+    if pages[0].as_account::<WeightPage>(program_id)?.total()? != u128::from(vault.total_shares) {
+        return Err(FateError::InvalidWeightTree.into());
     }
+    if is_new {
+        create_program_account::<StakerPosition>(
+            position_info,
+            system_program_info,
+            staker,
+            program_id,
+            &[STAKER_POSITION_SEED, staker.key.as_ref()],
+        )?;
+        let position = position_info.as_account_mut::<StakerPosition>(program_id)?;
+        position.authority = *staker.key;
+        position.rent_payer = *staker.key;
+        position.leaf_index = leaf_index;
+        position.status = STAKER_STATUS_INITIALIZED;
+    }
+    let new_weight = old_weight
+        .checked_add(u128::from(shares))
+        .ok_or(FateError::ArithmeticOverflow)?;
+    update_weight_path(
+        program_id,
+        vault_info.key,
+        leaf_index,
+        old_weight,
+        new_weight,
+        pages,
+    )?;
+    vault_info.collect(amount, staker)?;
 
-    Ok(())
-}
-
-fn apply_staker_deposit(
-    vault: &mut StakerVault,
-    registry: &mut StakerRegistry,
-    authority: Pubkey,
-    amount: u64,
-    shares: u64,
-    queued: bool,
-) -> Result<(), FateError> {
-    let entry = registry.get_or_insert(authority)?;
-    entry.lifetime_deposited_lamports = entry
+    let vault = vault_info.as_account_mut::<StakerVault>(program_id)?;
+    vault.active_assets_lamports = vault
+        .active_assets_lamports
+        .checked_add(amount)
+        .ok_or(FateError::ArithmeticOverflow)?;
+    vault.total_shares = vault
+        .total_shares
+        .checked_add(shares)
+        .ok_or(FateError::ArithmeticOverflow)?;
+    if is_new {
+        vault.next_position_index = vault
+            .next_position_index
+            .checked_add(1)
+            .ok_or(FateError::ParticipantIndexExhausted)?;
+    }
+    let position = position_info.as_account_mut::<StakerPosition>(program_id)?;
+    position.active_shares = position
+        .active_shares
+        .checked_add(shares)
+        .ok_or(FateError::ArithmeticOverflow)?;
+    position.lifetime_deposited_lamports = position
         .lifetime_deposited_lamports
         .checked_add(amount)
         .ok_or(FateError::ArithmeticOverflow)?;
 
-    if queued {
-        vault.pending_assets_lamports = vault
-            .pending_assets_lamports
-            .checked_add(amount)
-            .ok_or(FateError::ArithmeticOverflow)?;
-        entry.pending_deposit_lamports = entry
-            .pending_deposit_lamports
-            .checked_add(amount)
-            .ok_or(FateError::ArithmeticOverflow)?;
-    } else {
-        vault.active_assets_lamports = vault
-            .active_assets_lamports
-            .checked_add(amount)
-            .ok_or(FateError::ArithmeticOverflow)?;
-        vault.total_shares = vault
-            .total_shares
-            .checked_add(shares)
-            .ok_or(FateError::ArithmeticOverflow)?;
-        entry.active_shares = entry
-            .active_shares
-            .checked_add(shares)
-            .ok_or(FateError::ArithmeticOverflow)?;
+    let tracked = vault
+        .active_assets_lamports
+        .checked_add(vault.withdrawal_liability_lamports)
+        .ok_or(FateError::ArithmeticOverflow)?;
+    if vault_info
+        .lamports()
+        .saturating_sub(Rent::get()?.minimum_balance(StakerVault::SIZE))
+        < tracked
+    {
+        return Err(FateError::InsufficientCustody.into());
     }
-
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn deposits_are_active_before_funding_starts() {
-        let authority = Pubkey::new_unique();
-        let mut vault = StakerVault::zeroed();
-        let mut registry = Box::new(StakerRegistry::zeroed());
-
-        apply_staker_deposit(&mut vault, &mut registry, authority, 100, 100, false).unwrap();
-
-        assert_eq!(vault.active_assets_lamports, 100);
-        assert_eq!(vault.pending_assets_lamports, 0);
-        assert_eq!(vault.total_shares, 100);
-        let entry = &registry.entries[registry.find_index(&authority).unwrap()];
-        assert_eq!(entry.active_shares, 100);
-        assert_eq!(entry.lifetime_deposited_lamports, 100);
-    }
-
-    #[test]
-    fn deposits_queue_after_funding_starts() {
-        let authority = Pubkey::new_unique();
-        let mut vault = StakerVault {
-            active_assets_lamports: 1_000,
-            total_shares: 1_000,
-            ..StakerVault::zeroed()
-        };
-        let mut registry = Box::new(StakerRegistry::zeroed());
-
-        apply_staker_deposit(&mut vault, &mut registry, authority, 100, 0, true).unwrap();
-
-        assert_eq!(vault.active_assets_lamports, 1_000);
-        assert_eq!(vault.pending_assets_lamports, 100);
-        assert_eq!(vault.total_shares, 1_000);
-        let entry = &registry.entries[registry.find_index(&authority).unwrap()];
-        assert_eq!(entry.active_shares, 0);
-        assert_eq!(entry.pending_deposit_lamports, 100);
-    }
 }

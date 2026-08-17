@@ -30,8 +30,8 @@ During funding:
 - The initial activation target is `1% of active Staker TVL`.
 - The first Player deposit starts the waiting clock.
 - Player deposits accumulate until the active threshold is reached.
-- Stakers may withdraw immediately; each withdrawal recalculates the snapshot and threshold.
-- New Staker deposits wait for the next draw after the first Player enters.
+- Stakers may withdraw immediately; each withdrawal recalculates the snapshot and threshold. The last active Staker cannot exit while Player funds remain.
+- New Staker deposits close after the first Player enters and reopen with the next draw.
 
 At activation:
 
@@ -39,7 +39,7 @@ At activation:
 - all pending Player deposits become committed;
 - a 5-minute countdown begins;
 - additional Player deposits may join and are immediately committed;
-- new Staker deposits wait for the next draw.
+- Staker deposits and withdrawals remain frozen until settlement.
 
 At the end of the countdown, deposits lock, secure randomness selects the side and winner, settlement executes, and the next funding period opens. Every activated draw produces exactly one jackpot winner.
 
@@ -210,6 +210,6 @@ python3 data-simulation/run_scenarios.py --data-dir data-simulation
 
 ## Build Readiness
 
-The simulator and deterministic Steel custody core now cover funding, deposits, refunds, activation, countdown locking, both settlement sides, claims, queued Staker actions, fees, erosion, permissionless progression, and bounded rent recovery. Localnet and devnet use a compile-time deterministic settlement fixture; mainnet Entropy integration remains intentionally deferred.
+The simulator covers the accepted economics. The deterministic Steel custody core now uses per-wallet PDAs and verified weighted paths, and covers funding, deposits, refunds, activation, countdown locking, both settlement sides, claims, fees, erosion, permissionless progression, and bounded rent recovery. Localnet and devnet use a compile-time deterministic settlement fixture; mainnet Entropy integration remains intentionally deferred.
 
 Before mainnet parameters are immutable, testnet usage must replace synthetic arrival assumptions with observed data. The build still needs maximum-capacity benchmarks, broader adversarial and invariant tests, a complete keeper-driven localnet/devnet run, the Next.js app, and the verified mainnet Entropy integration with terminal outage recovery.

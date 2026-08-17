@@ -9,6 +9,7 @@
     "test": "node --experimental-strip-types --test scripts/*.test.ts"
   },
   "dependencies": {
+    "@noble/hashes": "^2.3.0",
     "@solana/kit": "^7.1.0",
     "@solana/kit-plugin-rpc": "^0.16.0",
     "@solana/kit-plugin-signer": "^0.13.0"

@@ -14,6 +14,9 @@ importers:
 
   app:
     dependencies:
+      '@noble/hashes':
+        specifier: ^2.3.0
+        version: 2.3.0
       '@solana/kit':
         specifier: ^7.1.0
         version: 7.1.0(typescript@7.0.2)
@@ -89,6 +92,10 @@ packages:
     engines: {node: '>=14.21.3'}
     cpu: [x64]
     os: [win32]
+
+  '@noble/hashes@2.3.0':
+    resolution: {integrity: sha512-oN+QwyX7VSHotibwubG3kpzbwKrfnyR6OOO+3Nk/53ADL7FmgHHz4TgrbaYKvvOw09u6QTx0oiH1cNCIOuN0CQ==}
+    engines: {node: '>= 20.19.0'}
 
   '@solana/accounts@7.1.0':
     resolution: {integrity: sha512-0Vp2advYsTb7eb0jZveXZJaux6OSYcI3nitwoXOTZzCuzjbIjiHI/bpn3CcqfKBPW/1dnCIWAW7VW1otqH0a1w==}
@@ -686,6 +693,8 @@ snapshots:
 
   '@biomejs/cli-win32-x64@2.5.8':
     optional: true
+
+  '@noble/hashes@2.3.0': {}
 
   '@solana/accounts@7.1.0(typescript@7.0.2)':
     dependencies:

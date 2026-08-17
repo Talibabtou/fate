@@ -128,32 +128,33 @@ fate/
 
 ## On-Chain Accounts
 
-Start with fixed-size registries. This bounds account rent, transaction compute, and winner-selection work. Unlimited participants would require a sum tree, proofs, and more state-management code before the product has users.
+Use per-wallet PDAs and an authenticated weighted tree. Never make activation or settlement scan all participants.
 
 - [x] Define `Config` with authority, fee treasury, pause state, current draw ID, and program version.
-- [x] Define `StakerVault` with active assets, pending assets, frozen withdrawal liabilities, total shares, and queued withdrawal shares.
-- [x] Define a fixed `StakerRegistry` with at most 512 wallet entries.
-- [x] Define one persistent Staker entry per wallet inside the registry with active shares, pending deposit, queued withdrawal, frozen withdrawal claim, and status.
+- [x] Define `StakerVault` with active assets, exact withdrawal liabilities, total shares, lifetime accounting, and sequential position indexes.
+- [x] Define one persistent `StakerPosition` PDA per wallet.
+- [x] Store active shares, exact claim liability, lifetime deposits, and weighted-tree leaf index in each Staker position.
 - [x] Define `Draw` with state, timestamps, snapshots, threshold data, Player totals, Entropy reference, result, fee, erosion, winner, and claim state.
-- [x] Define a fixed Player registry with at most 116 wallets in each draw so it can be created atomically below Solana's account-growth limit.
-- [x] Store each Player wallet's refundable deposit, committed deposit, and summed boosted weight.
+- [x] Define one `PlayerPosition` PDA per wallet and draw with no small participant-count cap.
+- [x] Store each Player wallet's refundable deposit, committed deposit, summed boosted weight, claim, and leaf index.
+- [x] Add an eight-level radix-16 weighted index that updates and verifies winner paths in logarithmic work.
 - [x] Store the ten latest settled draw IDs in a fixed ring buffer in `Config`.
 - [x] Derive every PDA from fixed prefixes and explicit IDs.
 - [x] Calculate account rent and publish it in the technical notes.
-- [x] Bound long-term rent by closing each `PlayerRegistry` as soon as its liabilities are zero and each `Draw` after it leaves the ten-result history window; return rent only to the recorded payer.
-- [ ] Benchmark 512 Stakers and 116 Players against Solana compute limits.
-- [ ] Freeze or lower capacities only after the maximum-settlement benchmark demonstrates an acceptable safety margin.
+- [x] Bound long-term rent by closing settled Player positions, draw-scoped weight pages, and expired Draw accounts; return rent only to each recorded payer.
+- [ ] Benchmark weighted-path deposit, refund, withdrawal, and settlement compute and packet size.
+- [x] Prove the old 116-Player boundary is gone with a 117-wallet runtime test.
 
 
 
 ## Program Instructions
 
-- [x] `initialize`: create configuration, vault, first draw, Player registry, treasury references, and the Staker registry bootstrap account.
-- [x] `grow_program_accounts`: grow the persistent Staker registry within Solana's per-instruction limit and enable the program only after all five ordered steps finish.
-- [x] `deposit_stake`: transfer SOL, mint shares immediately when no funding snapshot exists, or queue SOL for the next draw.
-- [x] `request_stake_withdrawal`: execute during `FUNDING`, update the snapshot and threshold, or queue the request from `ACTIVATED` until settlement.
-- [x] `deposit_player`: create or update one wallet entry, transfer refundable SOL, record boosted weight, and create the first-Player snapshot when needed.
-- [x] `refund_player`: return the wallet's full pending position before activation and clear its Player entry.
+- [x] `initialize`: create configuration, vault, first draw, and treasury/randomness references in one transaction.
+- [x] Reserve the removed `grow_program_accounts` discriminator and reject it.
+- [x] `deposit_stake`: create/reuse one wallet PDA, update its verified tree path, transfer SOL, and mint shares before Player funding begins.
+- [x] `request_stake_withdrawal`: execute during `FUNDING`, update the verified tree path, and recalculate the snapshot and threshold when Players are present.
+- [x] `deposit_player`: create/update one wallet PDA and its verified draw tree path, transfer SOL, record boosted weight, and create the first-Player snapshot.
+- [x] `refund_player`: return the wallet's full pending position and remove its weight before activation.
 - [x] Reset the funding clock and snapshot if every Player refunds before activation.
 - [x] `activate_draw`: verify the live decayed threshold and start the five-minute countdown.
 - [x] Treat every Player deposit during countdown as committed immediately.
@@ -162,15 +163,13 @@ Start with fixed-size registries. This bounds account rent, transaction compute,
 - [ ] `settle_draw`: replace only the dev fixture source with a verified mainnet Entropy CPI/account gate before production deployment.
 - [x] On a Player win, move the full payout into the winner's claimable balance.
 - [x] On a Staker win, add the 65% distribution to vault assets and mint jackpot shares without reducing other Stakers' ownership value; use an exact withdrawal liability for a sub-share jackpot.
-- [x] After settlement, price and execute queued Staker withdrawals.
 - [x] `claim_stake_withdrawal`: pay a Staker's frozen post-settlement withdrawal liability without depending on pause or the current draw.
-- [x] After settlement, mint shares for queued Staker deposits at the post-settlement share price.
 - [x] `claim_player`: transfer the full recorded claim once and mark it claimed.
 - [x] `pause`: stop new deposits and activation.
 - [x] `unpause`: reopen new deposits and activation.
 - [x] Ensure pause never blocks pending Player refunds, Staker exits, locked-draw settlement, or claims.
-- [x] Add permissionless storage cleanup that closes a liability-free `PlayerRegistry` and an expired `Draw` only after its history-retention window, returning rent to the recorded payer.
-- [ ] Emit compact events for deposits, refunds, activation, lock, settlement, queued Staker actions, claims, and pause changes.
+- [x] Add permissionless cleanup for settled Player positions, draw weight pages, and expired Draw headers, returning rent to recorded payers.
+- [ ] Emit compact events for deposits, refunds, activation, lock, settlement, claims, and pause changes.
 
 
 
@@ -194,7 +193,7 @@ Verification on 2026-08-17 found no Entropy program at its declared ID on devnet
 
 ## Program Tests
 
-The lifecycle runs through the real Solana runtime. It covers multi-step genesis, Staker and Player deposits, pending Player refund, immediate and queued Staker withdrawal requests, pause-safe exits, activation, exact-floor rejection, countdown locking, twelve alternating settlements, custody transfers, claims, history rollover, exact rent refunds, storage closure, and creation of following draws. Mainnet Entropy account/CPI validation remains pending.
+The lifecycle runs through the real Solana runtime. It proves 117 distinct Player wallets can enter one draw, then separately covers initialization, Staker/Player deposits, activation, countdown locking, weighted-path settlement, Player claim, position/page rent cleanup, and creation of the following draw. Broader adversarial lifecycle coverage and mainnet Entropy validation remain pending.
 
 - [ ] Test all state transitions and reject transitions from the wrong phase.
 - [ ] Test every instruction's owner, data-length, discriminator, signer, writable/read-only, PDA seed, canonical bump, and stored-relationship validation.
@@ -235,7 +234,7 @@ The keeper is a small script, not a service platform. State transitions remain c
 - [x] Do not add an on-chain caller reward in v1.
 - [x] Make every keeper action idempotent and harmless when another caller wins the race.
 - [x] Log transaction signature, draw ID, attempted transition, and error locally without user tracking.
-- [x] Close eligible registry/draw storage and confirm recovered rent returns to the recorded payer before funding another long-running test batch.
+- [x] Close eligible position/page storage and confirm the draw cleanup counters reach zero.
 
 
 
@@ -295,7 +294,7 @@ One segmented control changes the central action between Staker and Player. The 
 - [ ] Create a text Fate wordmark and a small initial color/type specimen before component work.
 - [ ] Choose one accent that is distinct from ORE's brand.
 - [ ] Build the live draw shell before adding historical results.
-- [ ] Build the Staker mode with deposit, queued deposit, withdrawal, queued withdrawal, current shares, and current SOL value.
+- [ ] Build the Staker mode with deposit availability, Funding withdrawal, frozen countdown state, current shares, and current SOL value.
 - [ ] Build the Player mode with amount, early boost, personal winner probability, maximum loss, exact payout estimate, deposit, and refund.
 - [ ] Disable Staker deposit only during the short settlement transaction window; explain next-draw queuing during funding and countdown.
 - [ ] Display funding threshold, elapsed wait, next decay, estimated activation, and five-minute countdown.
@@ -334,7 +333,7 @@ One segmented control changes the central action between Staker and Player. The 
 - [ ] Configure a primary devnet HTTP/WSS RPC pair and at least one read fallback.
 - [ ] Verify the deployed devnet artifact has `dev-randomness` enabled and has no live Entropy dependency.
 - [ ] Deploy the Fate program with the single development authority.
-- [ ] Initialize configuration, vault, registries, treasury, and first draw.
+- [ ] Initialize configuration, vault, treasury, and first draw on devnet.
 - [ ] Fund the keeper fee payer with a small capped balance.
 - [ ] Run at least 1,000 automated devnet draw transitions with scripted wallets.
 - [ ] Compare devnet outcomes and balances with simulator predictions.
@@ -349,7 +348,7 @@ One segmented control changes the central action between Staker and Player. The 
 ## Mainnet Gates
 
 - [ ] Replace synthetic arrival assumptions with observed devnet behavior.
-- [ ] Review whether the 512 Staker and 116 Player limits match observed demand and compute use.
+- [ ] Benchmark weighted-path compute, transaction size, contention, and rent under observed demand.
 - [ ] Complete an independent Solana program security review.
 - [ ] Review Entropy's production status, operator assumptions, outage behavior, and economic security.
 - [ ] Move upgrade and treasury authority to a multisig.

@@ -10,7 +10,7 @@ pub fn process_initialize(
 ) -> ProgramResult {
     Initialize::try_from_bytes(data)?;
 
-    let [payer, authority, fee_treasury, entropy_program, entropy_variable, config_info, staker_vault_info, staker_registry_info, draw_info, player_registry_info, system_program_info] =
+    let [payer, authority, fee_treasury, entropy_program, entropy_variable, config_info, staker_vault_info, draw_info, system_program_info] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -31,13 +31,7 @@ pub fn process_initialize(
     validate_entropy_accounts(entropy_program, entropy_variable)?;
 
     let draw_id_bytes = INITIAL_DRAW_ID.to_le_bytes();
-    let targets = [
-        config_info,
-        staker_vault_info,
-        staker_registry_info,
-        draw_info,
-        player_registry_info,
-    ];
+    let targets = [fee_treasury, config_info, staker_vault_info, draw_info];
     ensure_distinct(&targets)?;
 
     config_info
@@ -50,21 +44,11 @@ pub fn process_initialize(
         .is_writable()?
         .has_owner(&system_program::ID)?
         .has_seeds(&[STAKER_VAULT_SEED], program_id)?;
-    staker_registry_info
-        .is_empty()?
-        .is_writable()?
-        .has_owner(&system_program::ID)?
-        .has_seeds(&[STAKER_REGISTRY_SEED], program_id)?;
     draw_info
         .is_empty()?
         .is_writable()?
         .has_owner(&system_program::ID)?
         .has_seeds(&[DRAW_SEED, &draw_id_bytes], program_id)?;
-    player_registry_info
-        .is_empty()?
-        .is_writable()?
-        .has_owner(&system_program::ID)?
-        .has_seeds(&[PLAYER_REGISTRY_SEED, &draw_id_bytes], program_id)?;
 
     let created_at = Clock::get()?.unix_timestamp;
 
@@ -82,14 +66,6 @@ pub fn process_initialize(
         program_id,
         &[STAKER_VAULT_SEED],
     )?;
-    create_registry_bootstrap_account(
-        staker_registry_info,
-        system_program_info,
-        payer,
-        program_id,
-        &[STAKER_REGISTRY_SEED],
-        FateAccount::StakerRegistry as u8,
-    )?;
     create_program_account::<Draw>(
         draw_info,
         system_program_info,
@@ -97,19 +73,9 @@ pub fn process_initialize(
         program_id,
         &[DRAW_SEED, &draw_id_bytes],
     )?;
-    create_program_account::<PlayerRegistry>(
-        player_registry_info,
-        system_program_info,
-        payer,
-        program_id,
-        &[PLAYER_REGISTRY_SEED, &draw_id_bytes],
-    )?;
 
     let config = config_info.as_account_mut::<Config>(program_id)?;
     let draw = draw_info.as_account_mut::<Draw>(program_id)?;
-    player_registry_info
-        .as_account_mut::<PlayerRegistry>(program_id)?
-        .draw_id = INITIAL_DRAW_ID;
     initialize_genesis_state(
         config,
         draw,
@@ -160,7 +126,7 @@ fn initialize_genesis_state(
     config.fee_treasury = *fee_treasury;
     config.entropy_program = *entropy_program;
     config.entropy_variable = *entropy_variable;
-    config.version = 0;
+    config.version = PROGRAM_VERSION;
     config.paused = 0;
     config.current_draw_id = INITIAL_DRAW_ID;
 
@@ -168,19 +134,6 @@ fn initialize_genesis_state(
     draw.phase = DrawPhase::Funding.into();
     draw.created_at = created_at;
     draw.rent_payer = *rent_payer;
-}
-
-fn create_registry_bootstrap_account<'a, 'info>(
-    target: &'a AccountInfo<'info>,
-    system_program: &'a AccountInfo<'info>,
-    payer: &'a AccountInfo<'info>,
-    owner: &Pubkey,
-    seeds: &[&[u8]],
-    discriminator: u8,
-) -> ProgramResult {
-    allocate_account(target, system_program, payer, 8, owner, seeds)?;
-    target.try_borrow_mut_data()?[0] = discriminator;
-    Ok(())
 }
 
 fn ensure_distinct(accounts: &[&AccountInfo<'_>]) -> ProgramResult {
@@ -224,7 +177,7 @@ mod tests {
         assert_eq!(config.fee_treasury, treasury);
         assert_eq!(config.entropy_program, entropy_program);
         assert_eq!(config.entropy_variable, entropy_variable);
-        assert_eq!(config.version, 0);
+        assert_eq!(config.version, PROGRAM_VERSION);
         assert!(!config.is_paused());
         assert_eq!(config.current_draw_id, 0);
         assert_eq!(draw.phase(), Some(DrawPhase::Funding));

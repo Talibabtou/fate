@@ -26,14 +26,15 @@ pub const MAX_PLAYER_BOOST_BPS: u64 = BASE_PLAYER_BOOST_BPS + MAX_EARLY_BOOST_BP
 pub const STAKER_JACKPOT_BPS: u64 = 3_000;
 pub const STAKER_PRO_RATA_BPS: u64 = 6_500;
 
-pub const MAX_STAKERS: usize = 512;
-// Keeps each draw-scoped registry below Solana's 10,240-byte per-instruction
-// account growth limit so the next draw can be created atomically at settlement.
-pub const MAX_PLAYERS_PER_DRAW: usize = 116;
-
 pub const CONFIG_SEED: &[u8] = b"config";
 pub const STAKER_VAULT_SEED: &[u8] = b"staker-vault";
-pub const STAKER_REGISTRY_SEED: &[u8] = b"staker-registry";
+pub const STAKER_POSITION_SEED: &[u8] = b"staker-position";
 pub const DRAW_SEED: &[u8] = b"draw";
-pub const PLAYER_REGISTRY_SEED: &[u8] = b"player-registry";
+pub const PLAYER_POSITION_SEED: &[u8] = b"player-position";
+pub const WEIGHT_PAGE_SEED: &[u8] = b"weight-page";
+// Eight radix-16 levels cover 2^32 positions while keeping settlement below
+// Solana's transaction account/packet limits without an address lookup table.
+pub const WEIGHT_TREE_DEPTH: usize = 8;
+pub const WEIGHT_PAGE_WIDTH: usize = 16;
+pub const MAX_PARTICIPANT_INDEX: u64 = u32::MAX as u64;
 pub const ENTROPY_AUTHORITY_SEED: &[u8] = b"entropy-authority";

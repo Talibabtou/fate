@@ -2,109 +2,75 @@ use fate_api::prelude::*;
 use solana_program::{keccak::hashv, rent::Rent, sysvar::Sysvar};
 use steel::*;
 
+use crate::weight_tree::{select_weight_path, update_weight_path};
+
 const DEV_ENTROPY_DOMAIN: &[u8] = b"fate:dev-fixture:v1";
 const MAX_DEV_ENTROPY_ATTEMPTS: u64 = 256;
 
-/// Localnet/devnet-only settlement. This module is absent from production
-/// builds unless `dev-randomness` is explicitly enabled.
 pub fn process_settle_draw_dev(
     program_id: &Pubkey,
     accounts: &[AccountInfo<'_>],
     data: &[u8],
 ) -> ProgramResult {
     SettleDrawDev::try_from_bytes(data)?;
-    let [payer, config_info, draw_info, player_registry_info, staker_vault_info, staker_registry_info, fee_treasury_info, next_draw_info, next_player_registry_info, system_program_info] =
-        accounts
-    else {
+    if accounts.len() != 9 + 2 * WEIGHT_TREE_DEPTH {
         return Err(ProgramError::NotEnoughAccountKeys);
-    };
-
+    }
+    let payer = &accounts[0];
+    let config_info = &accounts[1];
+    let draw_info = &accounts[2];
+    let player_position_info = &accounts[3];
+    let vault_info = &accounts[4];
+    let staker_position_info = &accounts[5];
+    let treasury = &accounts[6];
+    let next_draw_info = &accounts[7];
+    let system_program_info = &accounts[8];
+    let player_pages = &accounts[9..9 + WEIGHT_TREE_DEPTH];
+    let staker_pages = &accounts[9 + WEIGHT_TREE_DEPTH..];
     payer.is_signer()?.is_writable()?;
-    for account in [
+    for info in [
         config_info,
         draw_info,
-        player_registry_info,
-        staker_vault_info,
-        staker_registry_info,
-        fee_treasury_info,
+        player_position_info,
+        vault_info,
+        staker_position_info,
+        treasury,
         next_draw_info,
-        next_player_registry_info,
     ] {
-        account.is_writable()?;
-    }
-    if system_program_info.is_writable || fee_treasury_info.executable {
-        return Err(ProgramError::InvalidArgument);
+        info.is_writable()?;
     }
     system_program_info.is_program(&system_program::ID)?;
-    ensure_distinct(&[
-        payer,
-        config_info,
-        draw_info,
-        player_registry_info,
-        staker_vault_info,
-        staker_registry_info,
-        fee_treasury_info,
-        next_draw_info,
-        next_player_registry_info,
-    ])?;
-
     config_info.has_seeds(&[CONFIG_SEED], program_id)?;
-    staker_vault_info.has_seeds(&[STAKER_VAULT_SEED], program_id)?;
-    staker_registry_info.has_seeds(&[STAKER_REGISTRY_SEED], program_id)?;
-
-    let (draw_id, next_draw_id) = {
-        let config = config_info.as_account::<Config>(program_id)?;
-        if config.version != PROGRAM_VERSION || config.fee_treasury != *fee_treasury_info.key {
-            return Err(FateError::InvalidInitializationState.into());
-        }
-        (
-            config.current_draw_id,
-            config
-                .current_draw_id
-                .checked_add(1)
-                .ok_or(FateError::ArithmeticOverflow)?,
-        )
-    };
-    let draw_id_bytes = draw_id.to_le_bytes();
-    let next_draw_id_bytes = next_draw_id.to_le_bytes();
-    draw_info.has_seeds(&[DRAW_SEED, &draw_id_bytes], program_id)?;
-    player_registry_info.has_seeds(&[PLAYER_REGISTRY_SEED, &draw_id_bytes], program_id)?;
+    vault_info.has_seeds(&[STAKER_VAULT_SEED], program_id)?;
+    let config = config_info.as_account::<Config>(program_id)?;
+    if config.version != PROGRAM_VERSION || config.fee_treasury != *treasury.key {
+        return Err(FateError::InvalidInitializationState.into());
+    }
+    let draw_id = config.current_draw_id;
+    let next_id = draw_id
+        .checked_add(1)
+        .ok_or(FateError::ArithmeticOverflow)?;
+    draw_info.has_seeds(&[DRAW_SEED, &draw_id.to_le_bytes()], program_id)?;
     next_draw_info
         .is_empty()?
         .has_owner(&system_program::ID)?
-        .has_seeds(&[DRAW_SEED, &next_draw_id_bytes], program_id)?;
-    next_player_registry_info
-        .is_empty()?
-        .has_owner(&system_program::ID)?
-        .has_seeds(&[PLAYER_REGISTRY_SEED, &next_draw_id_bytes], program_id)?;
-
-    {
-        let draw = draw_info.as_account::<Draw>(program_id)?;
-        let players = player_registry_info.as_account::<PlayerRegistry>(program_id)?;
-        staker_vault_info.as_account::<StakerVault>(program_id)?;
-        staker_registry_info.as_account::<StakerRegistry>(program_id)?;
-        if draw.id != draw_id
-            || draw.phase() != Some(DrawPhase::Locked)
-            || players.draw_id != draw_id
-        {
-            return Err(FateError::InvalidDraw.into());
-        }
+        .has_seeds(&[DRAW_SEED, &next_id.to_le_bytes()], program_id)?;
+    let draw = draw_info.as_account::<Draw>(program_id)?;
+    let vault = vault_info.as_account::<StakerVault>(program_id)?;
+    if draw.id != draw_id || draw.phase() != Some(DrawPhase::Locked) {
+        return Err(FateError::InvalidDraw.into());
     }
-
-    create_program_account::<Draw>(
-        next_draw_info,
-        system_program_info,
-        payer,
-        program_id,
-        &[DRAW_SEED, &next_draw_id_bytes],
-    )?;
-    create_program_account::<PlayerRegistry>(
-        next_player_registry_info,
-        system_program_info,
-        payer,
-        program_id,
-        &[PLAYER_REGISTRY_SEED, &next_draw_id_bytes],
-    )?;
+    if player_pages[0]
+        .as_account::<WeightPage>(program_id)?
+        .total()?
+        != draw.total_player_weight.get()
+        || staker_pages[0]
+            .as_account::<WeightPage>(program_id)?
+            .total()?
+            != u128::from(vault.total_shares)
+    {
+        return Err(FateError::InvalidWeightTree.into());
+    }
 
     let desired_side = if draw_id % 2 == 0 {
         SelectedSide::Player
@@ -112,54 +78,156 @@ pub fn process_settle_draw_dev(
         SelectedSide::Staker
     };
     let entropy = dev_entropy_for_side(draw_id, desired_side)?;
-    let settled_at = Clock::get()?.unix_timestamp;
-    let applied = {
-        let draw = draw_info.as_account_mut::<Draw>(program_id)?;
-        draw.phase = DrawPhase::AwaitingRandomness.into();
-        apply_settlement_from_verified_entropy(
-            entropy,
-            settled_at,
-            draw,
-            player_registry_info.as_account_mut::<PlayerRegistry>(program_id)?,
-            staker_vault_info.as_account_mut::<StakerVault>(program_id)?,
-            staker_registry_info.as_account_mut::<StakerRegistry>(program_id)?,
-        )?
-    };
-
-    apply_transfers(
-        &applied.transfers,
-        player_registry_info,
-        staker_vault_info,
-        fee_treasury_info,
+    let side = select_side_from_entropy(&entropy, draw_id)?;
+    let player_position = *player_position_info.as_account::<PlayerPosition>(program_id)?;
+    let staker_position = *staker_position_info.as_account::<StakerPosition>(program_id)?;
+    player_position_info.has_seeds(
+        &[
+            PLAYER_POSITION_SEED,
+            &draw_id.to_le_bytes(),
+            player_position.authority.as_ref(),
+        ],
+        program_id,
     )?;
+    staker_position_info.has_seeds(
+        &[STAKER_POSITION_SEED, staker_position.authority.as_ref()],
+        program_id,
+    )?;
+    for (index, info) in [
+        config_info,
+        draw_info,
+        player_position_info,
+        vault_info,
+        staker_position_info,
+        treasury,
+        next_draw_info,
+    ]
+    .iter()
+    .enumerate()
+    {
+        if [
+            config_info,
+            draw_info,
+            player_position_info,
+            vault_info,
+            staker_position_info,
+            treasury,
+            next_draw_info,
+        ][..index]
+            .iter()
+            .any(|other| other.key == info.key)
+        {
+            return Err(ProgramError::InvalidArgument);
+        }
+    }
+    match side {
+        SelectedSide::Player => {
+            let target = winner_target_from_entropy(
+                &entropy,
+                draw_id,
+                side,
+                draw.total_player_weight.get(),
+            )?;
+            let selected = select_weight_path(program_id, draw_info.key, target, player_pages)?;
+            if selected != player_position.leaf_index
+                || player_position.draw_id != draw_id
+                || player_pages[WEIGHT_TREE_DEPTH - 1]
+                    .as_account::<WeightPage>(program_id)?
+                    .weights[weight_branch(selected, WEIGHT_TREE_DEPTH - 1)]
+                .get()
+                    != player_position.boosted_weight.get()
+            {
+                return Err(FateError::InvalidWeightTree.into());
+            }
+        }
+        SelectedSide::Staker => {
+            let target = winner_target_from_entropy(
+                &entropy,
+                draw_id,
+                side,
+                u128::from(vault.total_shares),
+            )?;
+            let selected = select_weight_path(program_id, vault_info.key, target, staker_pages)?;
+            if selected != staker_position.leaf_index
+                || staker_pages[WEIGHT_TREE_DEPTH - 1]
+                    .as_account::<WeightPage>(program_id)?
+                    .weights[weight_branch(selected, WEIGHT_TREE_DEPTH - 1)]
+                .get()
+                    != u128::from(staker_position.active_shares)
+            {
+                return Err(FateError::InvalidWeightTree.into());
+            }
+        }
+    }
+    let old_staker_weight = staker_position.active_shares;
+    create_program_account::<Draw>(
+        next_draw_info,
+        system_program_info,
+        payer,
+        program_id,
+        &[DRAW_SEED, &next_id.to_le_bytes()],
+    )?;
+    draw_info.as_account_mut::<Draw>(program_id)?.phase = DrawPhase::AwaitingRandomness.into();
+    let applied = apply_settlement_from_verified_entropy(
+        entropy,
+        Clock::get()?.unix_timestamp,
+        draw_info.as_account_mut::<Draw>(program_id)?,
+        vault_info.as_account_mut::<StakerVault>(program_id)?,
+        if side == SelectedSide::Player {
+            Some(player_position_info.as_account_mut::<PlayerPosition>(program_id)?)
+        } else {
+            None
+        },
+        if side == SelectedSide::Staker {
+            Some(staker_position_info.as_account_mut::<StakerPosition>(program_id)?)
+        } else {
+            None
+        },
+    )?;
+    if side == SelectedSide::Staker && applied.jackpot_shares_minted != 0 {
+        let new_weight = staker_position_info
+            .as_account::<StakerPosition>(program_id)?
+            .active_shares;
+        update_weight_path(
+            program_id,
+            vault_info.key,
+            staker_position_info
+                .as_account::<StakerPosition>(program_id)?
+                .leaf_index,
+            u128::from(old_staker_weight),
+            u128::from(new_weight),
+            staker_pages,
+        )?;
+    }
+    apply_transfers(&applied.transfers, draw_info, vault_info, treasury)?;
     validate_custody(
         draw_info.as_account::<Draw>(program_id)?,
-        player_registry_info,
-        staker_vault_info.as_account::<StakerVault>(program_id)?,
-        staker_vault_info,
+        draw_info,
+        vault_info.as_account::<StakerVault>(program_id)?,
+        vault_info,
     )?;
 
-    let next_draw = next_draw_info.as_account_mut::<Draw>(program_id)?;
-    next_draw.id = next_draw_id;
-    next_draw.phase = DrawPhase::Funding.into();
-    next_draw.created_at = settled_at;
-    next_draw.rent_payer = *payer.key;
-    next_player_registry_info
-        .as_account_mut::<PlayerRegistry>(program_id)?
-        .draw_id = next_draw_id;
-
+    let settled_at = draw_info.as_account::<Draw>(program_id)?.settled_at;
+    let next = next_draw_info.as_account_mut::<Draw>(program_id)?;
+    next.id = next_id;
+    next.phase = DrawPhase::Funding.into();
+    next.created_at = settled_at;
+    next.rent_payer = *payer.key;
     let config = config_info.as_account_mut::<Config>(program_id)?;
-    config.current_draw_id = next_draw_id;
+    config.current_draw_id = next_id;
     config.push_recent_draw(draw_id);
     Ok(())
 }
 
-fn dev_entropy_for_side(draw_id: u64, desired_side: SelectedSide) -> Result<[u8; 32], FateError> {
-    let draw_id_bytes = draw_id.to_le_bytes();
+fn dev_entropy_for_side(draw_id: u64, desired: SelectedSide) -> Result<[u8; 32], FateError> {
     for nonce in 0..MAX_DEV_ENTROPY_ATTEMPTS {
-        let nonce_bytes = nonce.to_le_bytes();
-        let entropy = hashv(&[DEV_ENTROPY_DOMAIN, &draw_id_bytes, &nonce_bytes]).to_bytes();
-        if select_side_from_entropy(&entropy, draw_id)? == desired_side {
+        let entropy = hashv(&[
+            DEV_ENTROPY_DOMAIN,
+            &draw_id.to_le_bytes(),
+            &nonce.to_le_bytes(),
+        ])
+        .to_bytes();
+        if select_side_from_entropy(&entropy, draw_id)? == desired {
             return Ok(entropy);
         }
     }
@@ -168,24 +236,18 @@ fn dev_entropy_for_side(draw_id: u64, desired_side: SelectedSide) -> Result<[u8;
 
 fn apply_transfers<'info>(
     transfers: &SettlementTransfers,
-    players: &AccountInfo<'info>,
+    draw: &AccountInfo<'info>,
     vault: &AccountInfo<'info>,
     treasury: &AccountInfo<'info>,
 ) -> ProgramResult {
-    treasury
-        .lamports()
-        .checked_add(transfers.player_registry_to_fee_treasury_lamports)
-        .and_then(|value| value.checked_add(transfers.staker_vault_to_fee_treasury_lamports))
-        .ok_or(FateError::ArithmeticOverflow)?;
-
-    if transfers.staker_vault_to_player_registry_lamports != 0 {
-        vault.send(transfers.staker_vault_to_player_registry_lamports, players);
+    if transfers.staker_vault_to_draw_lamports != 0 {
+        vault.send(transfers.staker_vault_to_draw_lamports, draw);
     }
-    if transfers.player_registry_to_staker_vault_lamports != 0 {
-        players.send(transfers.player_registry_to_staker_vault_lamports, vault);
+    if transfers.draw_to_staker_vault_lamports != 0 {
+        draw.send(transfers.draw_to_staker_vault_lamports, vault);
     }
-    if transfers.player_registry_to_fee_treasury_lamports != 0 {
-        players.send(transfers.player_registry_to_fee_treasury_lamports, treasury);
+    if transfers.draw_to_fee_treasury_lamports != 0 {
+        draw.send(transfers.draw_to_fee_treasury_lamports, treasury);
     }
     if transfers.staker_vault_to_fee_treasury_lamports != 0 {
         vault.send(transfers.staker_vault_to_fee_treasury_lamports, treasury);
@@ -195,63 +257,28 @@ fn apply_transfers<'info>(
 
 fn validate_custody(
     draw: &Draw,
-    player_registry_info: &AccountInfo<'_>,
+    draw_info: &AccountInfo<'_>,
     vault: &StakerVault,
-    staker_vault_info: &AccountInfo<'_>,
+    vault_info: &AccountInfo<'_>,
 ) -> ProgramResult {
     let rent = Rent::get()?;
-    let player_assets = draw
-        .player_tvl_lamports
-        .checked_add(draw.outstanding_player_claim_lamports)
-        .ok_or(FateError::ArithmeticOverflow)?;
-    if player_registry_info
+    if draw_info
         .lamports()
-        .saturating_sub(rent.minimum_balance(PlayerRegistry::SIZE))
-        < player_assets
+        .saturating_sub(rent.minimum_balance(Draw::SIZE))
+        < draw.outstanding_player_claim_lamports
     {
         return Err(FateError::InsufficientCustody.into());
     }
-    let staker_assets = vault
+    let tracked = vault
         .active_assets_lamports
-        .checked_add(vault.pending_assets_lamports)
-        .and_then(|value| value.checked_add(vault.withdrawal_liability_lamports))
+        .checked_add(vault.withdrawal_liability_lamports)
         .ok_or(FateError::ArithmeticOverflow)?;
-    if staker_vault_info
+    if vault_info
         .lamports()
         .saturating_sub(rent.minimum_balance(StakerVault::SIZE))
-        < staker_assets
+        < tracked
     {
         return Err(FateError::InsufficientCustody.into());
     }
     Ok(())
-}
-
-fn ensure_distinct(accounts: &[&AccountInfo<'_>]) -> ProgramResult {
-    for (index, account) in accounts.iter().enumerate() {
-        if accounts[..index]
-            .iter()
-            .any(|other| other.key == account.key)
-        {
-            return Err(ProgramError::InvalidArgument);
-        }
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn dev_fixture_alternates_sides_by_draw() {
-        for draw_id in 0..8 {
-            let expected = if draw_id % 2 == 0 {
-                SelectedSide::Player
-            } else {
-                SelectedSide::Staker
-            };
-            let entropy = dev_entropy_for_side(draw_id, expected).unwrap();
-            assert_eq!(select_side_from_entropy(&entropy, draw_id), Ok(expected));
-        }
-    }
 }

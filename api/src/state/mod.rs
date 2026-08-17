@@ -2,11 +2,13 @@ mod config;
 mod draw;
 mod player;
 mod staker;
+mod weight_tree;
 
 pub use config::*;
 pub use draw::*;
 pub use player::*;
 pub use staker::*;
+pub use weight_tree::*;
 
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use solana_program::pubkey::Pubkey;
@@ -19,9 +21,10 @@ use crate::consts::*;
 pub enum FateAccount {
     Config = 100,
     StakerVault = 101,
-    StakerRegistry = 102,
+    StakerPosition = 102,
     Draw = 103,
-    PlayerRegistry = 104,
+    PlayerPosition = 104,
+    WeightPage = 105,
 }
 
 #[repr(C)]
@@ -52,16 +55,40 @@ pub fn staker_vault_pda(program_id: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[STAKER_VAULT_SEED], program_id)
 }
 
-pub fn staker_registry_pda(program_id: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[STAKER_REGISTRY_SEED], program_id)
+pub fn staker_position_pda(program_id: &Pubkey, authority: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[STAKER_POSITION_SEED, authority.as_ref()], program_id)
 }
 
 pub fn draw_pda(program_id: &Pubkey, draw_id: u64) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[DRAW_SEED, &draw_id.to_le_bytes()], program_id)
 }
 
-pub fn player_registry_pda(program_id: &Pubkey, draw_id: u64) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[PLAYER_REGISTRY_SEED, &draw_id.to_le_bytes()], program_id)
+pub fn player_position_pda(program_id: &Pubkey, draw_id: u64, authority: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[
+            PLAYER_POSITION_SEED,
+            &draw_id.to_le_bytes(),
+            authority.as_ref(),
+        ],
+        program_id,
+    )
+}
+
+pub fn weight_page_pda(
+    program_id: &Pubkey,
+    tree: &Pubkey,
+    level: u64,
+    prefix: u64,
+) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[
+            WEIGHT_PAGE_SEED,
+            tree.as_ref(),
+            &level.to_le_bytes(),
+            &prefix.to_le_bytes(),
+        ],
+        program_id,
+    )
 }
 
 pub fn entropy_authority_pda(program_id: &Pubkey) -> (Pubkey, u8) {
@@ -85,9 +112,9 @@ mod tests {
         let addresses = [
             config_pda(&program_id).0,
             staker_vault_pda(&program_id).0,
-            staker_registry_pda(&program_id).0,
             draw_pda(&program_id, 7).0,
-            player_registry_pda(&program_id, 7).0,
+            staker_position_pda(&program_id, &Pubkey::new_unique()).0,
+            player_position_pda(&program_id, 7, &Pubkey::new_unique()).0,
             entropy_authority_pda(&program_id).0,
         ];
 
@@ -96,8 +123,8 @@ mod tests {
         }
         assert_ne!(draw_pda(&program_id, 7), draw_pda(&program_id, 8));
         assert_ne!(
-            player_registry_pda(&program_id, 7),
-            player_registry_pda(&program_id, 8)
+            player_position_pda(&program_id, 7, &Pubkey::default()),
+            player_position_pda(&program_id, 8, &Pubkey::default())
         );
     }
 }

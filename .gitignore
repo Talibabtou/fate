@@ -1,0 +1,33 @@
+.DS_Store
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.keypair.json
+*.pem
+
+# JavaScript / Next.js
+node_modules/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+pnpm-debug.log*
+
+# Rust / Solana
+target/
+test-ledger/
+.anchor/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*~

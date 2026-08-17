@@ -6,11 +6,11 @@ These instructions apply to `workspace/fate`. Fate is independent from ORE. Do n
 
 Before changing protocol behavior, simulation assumptions, program state, or transaction UX, read:
 
-1. `../README.md` for the public product model and latest simulation results.
-2. `BUILD_PLAN.md` for settled implementation choices, open tasks, and release gates.
-3. `../data-simulation/simulate.py` for executable economic behavior.
+1. `README.md` for the public product model and latest simulation results.
+2. `docs/BUILD_PLAN.md` for settled implementation choices, open tasks, and release gates.
+3. `data-simulation/simulate.py` for executable economic behavior.
 
-When these files disagree, checked decisions in `BUILD_PLAN.md` take precedence until the simulator and README are updated. Do not silently resolve an economic conflict in code.
+When these files disagree, checked decisions in `docs/BUILD_PLAN.md` take precedence until the simulator and README are updated. Do not silently resolve an economic conflict in code.
 
 For Solana program, client, RPC, testing, or deployment work, use the globally installed `solana-dev` skill and the references it routes to. Read its `references/security.md` before implementing or reviewing an instruction, and use the configured Solana Developer MCP to verify version-sensitive guidance. Fate's explicit Steel direction overrides the skill's default Anchor or Pinocchio framework recommendation.
 
@@ -109,7 +109,7 @@ Benchmark maximum-capacity settlement before fixing these values. Lower them if 
 
 1. Update the simulator for the larger-of-two activation floor, `0.01 SOL` Player minimum, fee on erosion, no countdown boost, and immediate Staker withdrawals during `FUNDING`.
 2. Rerun small, medium, and large scenarios with several seeds and verify value conservation.
-3. Update `../README.md` with only the accepted model and new results.
+3. Update `README.md` with only the accepted model and new results.
 4. Build the deterministic Steel program core and Next.js app against fixture state.
 5. Deploy the Fate-controlled Entropy copy and provider on devnet before enabling custody tests.
 6. Verify the complete Entropy lifecycle, missed-slot rejection, retry, refund, and mainnet parity behavior.
@@ -130,7 +130,7 @@ The cache prefix avoids the protected macOS system Python cache path in this wor
 
 ## Build Guardrails
 
-- Keep `README.md` as the only Markdown file in the repository root. Put all other Markdown documentation in `docs/`.
+- Keep only `README.md` and this required `AGENTS.md` control file in the repository root. Put all other authored Markdown documentation in `docs/`.
 - Never run `git add`, create commits, or push branches. Leave changes unstaged and give the user a short suggested commit message at handoff.
 - Prefix supported Solana development CLIs with `NO_DNA=1` to disable interactive agent-hostile behavior.
 - Never sign or send a transaction without explicit user approval. Default to localnet or devnet, show cluster, fee payer, transfers, and recipients, and simulate before requesting approval.
@@ -146,4 +146,4 @@ The cache prefix avoids the protected macOS system Python cache path in this wor
 - Do not use floating-point protocol math.
 - Do not hide negative Player EV, Staker erosion, protocol fees, pending status, or full-loss risk.
 - Preserve a tested exit path through pause and provider failure.
-- Update `BUILD_PLAN.md` checkboxes as work completes.
+- Update `docs/BUILD_PLAN.md` checkboxes as work completes.

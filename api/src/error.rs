@@ -26,6 +26,18 @@ pub enum FateError {
 
     #[error("Player position has committed funds")]
     PlayerFundsCommitted = 7,
+
+    #[error("Deposit is below the protocol minimum")]
+    DepositTooSmall = 8,
+
+    #[error("Protocol deposits are paused")]
+    ProtocolPaused = 9,
+
+    #[error("Draw state or relationship is invalid")]
+    InvalidDraw = 10,
+
+    #[error("Program custody does not cover tracked assets")]
+    InsufficientCustody = 11,
 }
 
 error!(FateError);

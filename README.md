@@ -7,14 +7,6 @@ Fate is a SOL lottery with two ways to participate:
 
 Staker SOL is held inert. It does not earn validator or DeFi yield. Game returns come from Player losses, and Staker principal can erode when the Player side wins.
 
-## Documentation
-
-- [Build plan](docs/BUILD_PLAN.md)
-- [Account model](docs/ACCOUNT_MODEL.md)
-- [Randomness gate](docs/RANDOMNESS_GATE.md)
-
-
-
 ## Draw Model
 
 Every activated draw has two rolls:
@@ -194,8 +186,6 @@ Run all scenarios:
 python3 data-simulation/run_scenarios.py --data-dir data-simulation
 ```
 
-
-
 ## Why These Parameters
 
 - **90% Player / 10% Staker:** gives Players a strong side-level chance while preserving a meaningful Staker event. The UI must also show each Player's much smaller personal winning chance.
@@ -209,8 +199,6 @@ python3 data-simulation/run_scenarios.py --data-dir data-simulation
 - **50% maximum early boost:** rewards the wallets that help start funding without changing the fixed side probabilities.
 - **No concentration gate:** allows a single Player to activate a draw and treats concentration as disclosed odds rather than an invalid state.
 
-
-
 ## Required User Disclosures
 
 - A Player can lose the full committed deposit.
@@ -219,8 +207,6 @@ python3 data-simulation/run_scenarios.py --data-dir data-simulation
 - Pending Player deposits are refundable only before activation.
 - The interface must show the current threshold, waiting time, threshold decay, pool composition, wallet concentration, personal odds, exact profit if selected, maximum loss, erosion, and fees before commitment.
 - Randomness must be unpredictable before lock, operator-independent, verifiable after settlement, and have a defined timeout or provider-failure path.
-
-
 
 ## Build Readiness
 

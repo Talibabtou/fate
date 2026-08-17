@@ -109,8 +109,9 @@ fate/
   program/              Solana instruction handlers
   tests/                Program integration and invariant tests (planned)
   data-simulation/      Simulator, scenario runner, retained reports, and summaries
-  docs/                 Build plan, account model, randomness gate, and agent notes
-  README.md             Current product model and documentation index
+  docs/                 Build plan, account model, and randomness gate
+  AGENTS.md             Required repository-scoped agent instructions
+  README.md             Current product model
 ```
 
 - [x] Initialize a root Cargo workspace containing `api` and `program`.
@@ -144,8 +145,8 @@ Start with fixed-size registries. This bounds account rent, transaction compute,
 
 ## Program Instructions
 
-- [ ] `initialize`: create configuration, vault, Staker registry, first draw, and treasury references.
-- [ ] `deposit_stake`: transfer SOL, mint shares immediately when no funding snapshot exists, or queue SOL for the next draw.
+- [x] `initialize`: create configuration, vault, Staker registry, first draw, and treasury references.
+- [x] `deposit_stake`: transfer SOL, mint shares immediately when no funding snapshot exists, or queue SOL for the next draw.
 - [ ] `request_stake_withdrawal`: execute during `FUNDING`, update the snapshot and threshold, or queue the request from `ACTIVATED` until settlement.
 - [ ] `deposit_player`: create or update one wallet entry, transfer refundable SOL, record boosted weight, and create the first-Player snapshot when needed.
 - [ ] `refund_player`: return the wallet's full pending position before activation and clear its Player entry.

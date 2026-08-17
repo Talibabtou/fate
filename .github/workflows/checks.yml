@@ -19,3 +19,5 @@ jobs:
           python-version: "3.12"
       - name: Compile simulator
         run: python -m py_compile data-simulation/simulate.py data-simulation/run_scenarios.py
+      - name: Test simulator
+        run: python -m unittest discover -s data-simulation -p "test_*.py"

@@ -85,15 +85,15 @@ These items must be resolved before the custody program is implemented.
 ## Simulation Gate
 
 - [x] Rename the legacy side terminology to Player in `simulate.py`, `run_scenarios.py`, generated CSV columns, analysis files, and `README.md`.
-- [ ] Add the new activation floor `max(0.1 SOL, 0.1% of Staker TVL)`.
-- [ ] Test the proposed `0.01 SOL` minimum Player deposit and measure stuck-funding frequency.
-- [ ] Charge 5% on `losing Player deposits + erosion` for Player-side wins.
-- [ ] Stop the early boost at activation.
-- [ ] Measure how often funding remains below its floor and how long it remains there without expiry.
-- [ ] Rerun small, medium, and large scenarios with several random seeds.
-- [ ] Record activation rate, funding duration, time spent at the activation floor, queued-withdrawal time, Player EV, Staker return, protocol revenue, and value conservation.
+- [x] Add the new activation floor `max(0.1 SOL, 0.1% of Staker TVL)`.
+- [x] Test the proposed `0.01 SOL` minimum Player deposit and measure stuck-funding frequency.
+- [x] Charge 5% on `losing Player deposits + erosion` for Player-side wins.
+- [x] Stop the early boost at activation.
+- [x] Measure how often funding remains below its floor and how long it remains there without expiry.
+- [x] Rerun small, medium, and large scenarios with several random seeds.
+- [x] Record activation rate, funding duration, time spent at the activation floor, queued-withdrawal time, Player EV, Staker return, protocol revenue, and value conservation.
 - [ ] Compare simulator test vectors against the Rust math implementation byte for byte.
-- [ ] Update `README.md` only after the revised simulation passes.
+- [x] Update `README.md` only after the revised simulation passes.
 
 ## Repository Shape
 

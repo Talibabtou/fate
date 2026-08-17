@@ -11,7 +11,7 @@ Current model:
 - Player deposits can still enter during the countdown.
 - Staker deposits made after countdown start only count from the next draw.
 - Every activated draw has exactly one jackpot winner wallet.
-- Fees are charged on losing Player deposits when Player wins, not on the winner's own deposit.
+- Fees are charged on losing Player deposits plus Staker erosion when Player wins.
 - Player-win erosion is min(0.07% of Staker TVL, 7% of Player TVL).
 - Staker wins split Player TVL 30% jackpot, 65% pro-rata, and 5% protocol fee.
 """
@@ -70,8 +70,12 @@ class Config:
     threshold_decay_interval_minutes: int = 10
     threshold_decay_factor: float = 0.90
     minimum_draw_pool_sol: float = 0.10
+    activation_floor_pct_of_safe_tvl: float = 0.001
+    minimum_player_deposit_sol: float = 0.01
     player_arrivals_per_interval: float = 1.00
     pending_withdrawal_probability: float = 0.01
+    funding_staker_withdrawal_probability: float = 0.001
+    countdown_staker_withdrawal_probability: float = 0.001
     countdown_minutes: int = 5
     safe_jackpot_share: float = 0.30
     safe_pro_rata_share: float = 0.65
@@ -149,6 +153,22 @@ class State:
     next_safe_id: int = 0
     next_risk_id: int = 0
     protocol_revenue: float = 0.0
+
+
+@dataclass
+class FundingResult:
+    positions: list[RiskPosition]
+    withdrawn_positions: list[RiskPosition]
+    safe_participants: list[Participant]
+    funding_minutes: int
+    threshold_decay_steps: int
+    initial_threshold: float
+    activation_threshold: float
+    activation_floor: float
+    minutes_at_floor: int
+    funding_staker_withdrawal_count: int
+    funding_staker_withdrawal_tvl: float
+    funding_clock_resets: int
 
 
 def bounded_lognormal(rng: random.Random, mu: float, sigma: float, lo: float, hi: float) -> float:
@@ -344,7 +364,7 @@ def pick_existing_risk_user(
     config: Config,
     committed_by_wallet: dict[str, float],
 ) -> Participant | None:
-    minimum_available = 0.05 * config.capital_scale
+    minimum_available = config.minimum_player_deposit_sol
     for _ in range(24):
         if not state.risk_participant_ids:
             return None
@@ -365,7 +385,7 @@ def add_position(
     threshold: float,
     entered_at_minute: int = 0,
 ) -> None:
-    if amount < 0.03 * config.capital_scale:
+    if amount < config.minimum_player_deposit_sol:
         return
     risk_tvl_before = sum(p.amount for p in positions)
     remaining_fraction = max(threshold - risk_tvl_before, 0.0) / threshold if threshold > 0 else 0.0
@@ -438,18 +458,23 @@ def collect_timed_funding(
     rng: random.Random,
     config: Config,
     draw: int,
-    staker_tvl_snapshot: float,
-) -> tuple[list[RiskPosition], list[RiskPosition], int, int, float, float]:
+    safe_participants: list[Participant],
+) -> FundingResult:
+    staker_tvl_snapshot = sum(p.safe_principal for p in safe_participants)
     initial_threshold = staker_tvl_snapshot * config.risk_threshold_pct_of_safe_tvl
-    minimum_draw_pool = min(
-        initial_threshold,
+    activation_floor = max(
         config.minimum_draw_pool_sol,
+        staker_tvl_snapshot * config.activation_floor_pct_of_safe_tvl,
     )
     positions: list[RiskPosition] = []
     withdrawn: list[RiskPosition] = []
     committed_by_wallet: dict[str, float] = {}
     elapsed_minutes = 0
     waiting_steps = 0
+    minutes_at_floor = 0
+    funding_staker_withdrawal_count = 0
+    funding_staker_withdrawal_tvl = 0.0
+    funding_clock_resets = 0
 
     add_funding_player(
         state,
@@ -464,23 +489,57 @@ def collect_timed_funding(
 
     while True:
         active_threshold = max(
-            minimum_draw_pool,
+            activation_floor,
             initial_threshold * config.threshold_decay_factor**waiting_steps,
         )
         if sum(p.amount for p in positions) >= active_threshold:
-            return (
-                positions,
-                withdrawn,
-                elapsed_minutes,
-                waiting_steps,
-                initial_threshold,
-                active_threshold,
+            return FundingResult(
+                positions=positions,
+                withdrawn_positions=withdrawn,
+                safe_participants=safe_participants,
+                funding_minutes=elapsed_minutes,
+                threshold_decay_steps=waiting_steps,
+                initial_threshold=initial_threshold,
+                activation_threshold=active_threshold,
+                activation_floor=activation_floor,
+                minutes_at_floor=minutes_at_floor,
+                funding_staker_withdrawal_count=funding_staker_withdrawal_count,
+                funding_staker_withdrawal_tvl=funding_staker_withdrawal_tvl,
+                funding_clock_resets=funding_clock_resets,
             )
 
         elapsed_minutes += config.threshold_decay_interval_minutes
+        if active_threshold <= activation_floor:
+            minutes_at_floor += config.threshold_decay_interval_minutes
         if elapsed_minutes > 7 * 24 * 60:
             raise RuntimeError("funding did not activate within the simulator safety bound")
 
+        funding_withdrawal_ids = {
+            staker.participant_id
+            for staker in safe_participants
+            if rng.random() < config.funding_staker_withdrawal_probability
+        }
+        if len(funding_withdrawal_ids) == len(safe_participants) and safe_participants:
+            funding_withdrawal_ids.remove(safe_participants[-1].participant_id)
+        remaining_stakers = []
+        for staker in safe_participants:
+            if staker.participant_id in funding_withdrawal_ids:
+                staker.active = False
+                staker.withdrawals += 1
+                funding_staker_withdrawal_count += 1
+                funding_staker_withdrawal_tvl += staker.safe_principal
+            else:
+                remaining_stakers.append(staker)
+        safe_participants = remaining_stakers
+
+        staker_tvl_snapshot = sum(p.safe_principal for p in safe_participants)
+        initial_threshold = staker_tvl_snapshot * config.risk_threshold_pct_of_safe_tvl
+        activation_floor = max(
+            config.minimum_draw_pool_sol,
+            staker_tvl_snapshot * config.activation_floor_pct_of_safe_tvl,
+        )
+
+        had_positions = bool(positions)
         remaining = []
         for position in positions:
             if rng.random() < config.pending_withdrawal_probability:
@@ -500,6 +559,8 @@ def collect_timed_funding(
             waiting_steps += 1
         else:
             waiting_steps = 0
+            if had_positions:
+                funding_clock_resets += 1
 
         arrivals = stochastic_count(rng, config.player_arrivals_per_interval)
         for _ in range(arrivals):
@@ -578,8 +639,9 @@ def quote_risk_positions(config: Config, positions: list[RiskPosition], safe_tvl
         wallet = wallets[position.participant_id]
         wallet_amount = wallet["amount"]
         losing_risk_deposits = max(risk_tvl - wallet_amount, 0.0)
-        fee = losing_risk_deposits * config.protocol_fee_rate
-        position.profit_if_win = max(risk_tvl - wallet_amount - fee + safe_erosion_bonus, 0.0)
+        gross_profit = losing_risk_deposits + safe_erosion_bonus
+        fee = gross_profit * config.protocol_fee_rate
+        position.profit_if_win = max(gross_profit - fee, 0.0)
         position.probability_if_risk_side_wins = (
             wallet["weight"] / total_second_draw_weight if total_second_draw_weight > 0 else 0.0
         )
@@ -629,6 +691,8 @@ def settle_draw(
     threshold_decay_steps: int,
     withdrawn_positions: list[RiskPosition],
 ) -> dict[str, object]:
+    pnl_before = sum(p.cumulative_pnl for p in state.participants.values())
+    protocol_revenue_before = state.protocol_revenue
     safe_tvl = sum(p.safe_principal for p in safe_participants)
     risk_tvl = sum(p.amount for p in positions)
     threshold = activation_threshold
@@ -656,10 +720,11 @@ def settle_draw(
             )
             winning_wallet_amount = risk_wallets[winner_id]["amount"]
             losing_risk_deposits = max(risk_tvl - winning_wallet_amount, 0.0)
-            fee = losing_risk_deposits * config.protocol_fee_rate
-            state.protocol_revenue += fee
             safe_erosion_paid = calculate_safe_erosion(config, safe_tvl, risk_tvl)
-            winner_profit = max(risk_tvl - winning_wallet_amount - fee + safe_erosion_paid, 0.0)
+            gross_profit = losing_risk_deposits + safe_erosion_paid
+            fee = gross_profit * config.protocol_fee_rate
+            state.protocol_revenue += fee
+            winner_profit = max(gross_profit - fee, 0.0)
             for safe in safe_participants:
                 erosion = safe.safe_principal / safe_tvl * safe_erosion_paid if safe_tvl > 0 else 0.0
                 safe.safe_principal -= erosion
@@ -698,15 +763,21 @@ def settle_draw(
                 safe_jackpot_paid *= scale
                 safe_pro_rata_paid *= scale
 
+            staker_shares = {
+                participant.participant_id: participant.safe_principal / safe_tvl
+                for participant in safe_participants
+            }
             winner_id = weighted_choice(rng, [(p.participant_id, p.safe_principal) for p in safe_participants])
             winner = state.participants[winner_id]
+            winner.safe_principal += safe_jackpot_paid
             winner.cumulative_pnl += safe_jackpot_paid
             winner.wins += 1
             winner_profit = safe_jackpot_paid
 
             for safe in safe_participants:
-                share = safe.safe_principal / safe_tvl if safe_tvl > 0 else 0.0
+                share = staker_shares[safe.participant_id]
                 payout = safe_pro_rata_paid * share
+                safe.safe_principal += payout
                 safe.cumulative_pnl += payout
                 safe.pro_rata_received += payout
 
@@ -722,6 +793,16 @@ def settle_draw(
         for position in positions:
             position.status = "pending_refunded"
             position.pnl = 0.0
+
+    pnl_after = sum(p.cumulative_pnl for p in state.participants.values())
+    protocol_revenue_after = state.protocol_revenue
+    conservation_error = (pnl_after - pnl_before) + (
+        protocol_revenue_after - protocol_revenue_before
+    )
+    if abs(conservation_error) > 1e-7:
+        raise AssertionError(
+            f"draw {draw} failed value conservation by {conservation_error:.12f} SOL"
+        )
 
     return {
         "draw": draw,
@@ -755,6 +836,7 @@ def settle_draw(
         "safe_pro_rata_paid": round(safe_pro_rata_paid, 9),
         "safe_erosion_paid": round(safe_erosion_paid, 9),
         "protocol_revenue_cumulative": round(state.protocol_revenue, 9),
+        "value_conservation_error": round(conservation_error, 12),
         "safe_cumulative_pnl": round(sum(p.cumulative_pnl for p in state.participants.values() if p.mode == "safe"), 9),
         "risk_cumulative_pnl": round(sum(p.cumulative_pnl for p in state.participants.values() if p.mode == "risk"), 9),
     }
@@ -769,23 +851,30 @@ def run_simulation(config: Config) -> tuple[list[dict[str, object]], list[RiskPo
     for draw in range(1, config.draws + 1):
         safe_population_churn(state, rng, config, draw)
         safe_participants = active_safe_participants(state, draw)
-        safe_tvl = sum(p.safe_principal for p in safe_participants)
-        (
-            positions,
-            withdrawn_positions,
-            funding_minutes,
-            threshold_decay_steps,
-            initial_threshold,
-            activation_threshold,
-        ) = collect_timed_funding(state, rng, config, draw, safe_tvl)
+        funding = collect_timed_funding(state, rng, config, draw, safe_participants)
+        positions = funding.positions
         collect_countdown_risk(
             state,
             rng,
             config,
             draw,
             positions,
-            initial_threshold,
-            funding_minutes,
+            funding.initial_threshold,
+            funding.funding_minutes,
+        )
+
+        if any(position.early_boost != 1.0 for position in positions if position.phase == "countdown"):
+            raise AssertionError(f"draw {draw} applied an early boost after activation")
+
+        queued_staker_withdrawals = [
+            participant
+            for participant in funding.safe_participants
+            if rng.random() < config.countdown_staker_withdrawal_probability
+        ]
+        if len(queued_staker_withdrawals) == len(funding.safe_participants):
+            queued_staker_withdrawals = queued_staker_withdrawals[:-1]
+        queued_staker_withdrawal_tvl = sum(
+            participant.safe_principal for participant in queued_staker_withdrawals
         )
 
         row = settle_draw(
@@ -793,17 +882,34 @@ def run_simulation(config: Config) -> tuple[list[dict[str, object]], list[RiskPo
             rng,
             config,
             draw,
-            safe_participants,
+            funding.safe_participants,
             positions,
-            initial_threshold,
-            activation_threshold,
-            funding_minutes,
-            threshold_decay_steps,
-            withdrawn_positions,
+            funding.initial_threshold,
+            funding.activation_threshold,
+            funding.funding_minutes,
+            funding.threshold_decay_steps,
+            funding.withdrawn_positions,
+        )
+        for participant in queued_staker_withdrawals:
+            participant.active = False
+            participant.withdrawals += 1
+        row.update(
+            {
+                "activation_floor": round(funding.activation_floor, 9),
+                "minutes_at_floor": funding.minutes_at_floor,
+                "funding_staker_withdrawal_count": funding.funding_staker_withdrawal_count,
+                "funding_staker_withdrawal_tvl": round(funding.funding_staker_withdrawal_tvl, 9),
+                "queued_staker_withdrawal_count": len(queued_staker_withdrawals),
+                "queued_staker_withdrawal_tvl": round(queued_staker_withdrawal_tvl, 9),
+                "queued_staker_withdrawal_minutes": (
+                    config.countdown_minutes if queued_staker_withdrawals else 0
+                ),
+                "funding_clock_resets": funding.funding_clock_resets,
+            }
         )
         draw_rows.append(row)
         all_positions.extend(positions)
-        all_positions.extend(withdrawn_positions)
+        all_positions.extend(funding.withdrawn_positions)
 
     return draw_rows, all_positions, state
 
@@ -813,7 +919,7 @@ def write_csv(path: Path, rows: list[dict[str, object]]) -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="") as file:
-        writer = csv.DictWriter(file, fieldnames=list(rows[0].keys()))
+        writer = csv.DictWriter(file, fieldnames=list(rows[0].keys()), lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 
@@ -934,11 +1040,14 @@ def write_summary(path: Path, config: Config, draw_rows: list[dict[str, object]]
 - Threshold decay: {(1 - config.threshold_decay_factor):.0%} every {config.threshold_decay_interval_minutes} minutes
 - Player arrivals per funding interval: {config.player_arrivals_per_interval:.2f}
 - Pending Player withdrawal probability per interval: {config.pending_withdrawal_probability:.2%}
-- Minimum draw pool: {config.minimum_draw_pool_sol:.2f} SOL, or the initial threshold when lower
+- Staker withdrawal probability per funding interval: {config.funding_staker_withdrawal_probability:.2%}
+- Staker withdrawal-request probability during countdown: {config.countdown_staker_withdrawal_probability:.2%}
+- Activation floor: max({config.minimum_draw_pool_sol:.2f} SOL, {config.activation_floor_pct_of_safe_tvl:.2%} of Staker TVL)
+- Minimum Player deposit: {config.minimum_player_deposit_sol:.2f} SOL
 - Countdown: {config.countdown_minutes} minute(s)
 - Player side win probability: {config.target_risk_probability:.2%}
 - Staker side win probability: {1 - config.target_risk_probability:.2%}
-- Protocol fee: {config.protocol_fee_rate:.2%} of losing Player deposits when Player wins, or total Player TVL when Staker wins
+- Protocol fee: {config.protocol_fee_rate:.2%} of losing Player deposits plus erosion when Player wins, or total Player TVL when Staker wins
 - Staker erosion paid to Player winner: {config.safe_erosion_on_risk_win_rate:.4%} of active Staker TVL{f", capped at {config.risk_tvl_erosion_cap_rate:.2%} of Player TVL" if config.risk_tvl_erosion_cap_rate is not None else ""}
 - Staker-side split: {config.safe_jackpot_share:.0%} jackpot winner, {config.safe_pro_rata_share:.0%} pro-rata Staker distribution, {config.protocol_fee_rate:.0%} protocol
 - Max early Player boost: {config.max_early_boost:.0%}
@@ -957,11 +1066,18 @@ def write_summary(path: Path, config: Config, draw_rows: list[dict[str, object]]
 - Median funding time: {median(float(row["funding_minutes"]) for row in draw_rows):.1f} minutes
 - P90 funding time: {percentile([float(row["funding_minutes"]) for row in draw_rows], 0.90):.1f} minutes
 - Maximum funding time: {max(float(row["funding_minutes"]) for row in draw_rows):.1f} minutes
+- Draws reaching the activation floor: {sum(float(row["minutes_at_floor"]) > 0 for row in draw_rows)}
+- Total minutes waiting at the activation floor: {sum(float(row["minutes_at_floor"]) for row in draw_rows):.1f}
+- Immediate Staker withdrawals during funding: {sum(int(row["funding_staker_withdrawal_count"]) for row in draw_rows)}
+- Queued Staker withdrawals after activation: {sum(int(row["queued_staker_withdrawal_count"]) for row in draw_rows)}
+- Average queued Staker withdrawal wait: {mean(float(row["queued_staker_withdrawal_minutes"]) for row in draw_rows if int(row["queued_staker_withdrawal_count"]) > 0) if any(int(row["queued_staker_withdrawal_count"]) > 0 for row in draw_rows) else 0:.1f} minutes
+- Funding clock resets after all Players refunded: {sum(int(row["funding_clock_resets"]) for row in draw_rows)}
 - Average activation threshold: {mean(float(row["activation_threshold_pct"]) for row in draw_rows):.4%} of Staker TVL
 - Simulated draws per day: {len(activated) / (sum(float(row["cycle_minutes"]) for row in draw_rows) / 1440) if activated else 0:.2f}
 - Average winner profit: {mean(float(row["winner_profit"]) for row in activated) if activated else 0:.4f} SOL
 - Average protocol fee: {mean(float(row["protocol_fee"]) for row in activated) if activated else 0:.4f} SOL
 - Cumulative protocol revenue: {state.protocol_revenue:.4f} SOL
+- Maximum absolute value-conservation error: {max(abs(float(row["value_conservation_error"])) for row in draw_rows):.12f} SOL
 - Staker cumulative PnL: {sum(p.cumulative_pnl for p in state.participants.values() if p.mode == "safe"):.4f} SOL
 - Player cumulative PnL: {sum(p.cumulative_pnl for p in state.participants.values() if p.mode == "risk"):.4f} SOL
 - Average quoted Player EV per locked wallet: {mean(risk_evs) if risk_evs else 0:.4f} SOL
@@ -994,8 +1110,12 @@ def parse_args() -> Config:
     parser.add_argument("--threshold-decay-interval-minutes", type=int, default=10)
     parser.add_argument("--threshold-decay-factor", type=float, default=0.90)
     parser.add_argument("--minimum-draw-pool-sol", type=float, default=0.10)
+    parser.add_argument("--activation-floor-pct-of-safe-tvl", type=float, default=0.001)
+    parser.add_argument("--minimum-player-deposit-sol", type=float, default=0.01)
     parser.add_argument("--player-arrivals-per-interval", type=float)
     parser.add_argument("--pending-withdrawal-probability", type=float, default=0.01)
+    parser.add_argument("--funding-staker-withdrawal-probability", type=float, default=0.001)
+    parser.add_argument("--countdown-staker-withdrawal-probability", type=float, default=0.001)
     parser.add_argument("--safe-erosion-on-risk-win-rate", type=float, default=0.0007)
     parser.add_argument("--risk-tvl-erosion-cap-rate", type=float, default=0.07)
     parser.add_argument("--safe-jackpot-share", type=float, default=0.30)
@@ -1033,12 +1153,16 @@ def parse_args() -> Config:
     config.threshold_decay_interval_minutes = args.threshold_decay_interval_minutes
     config.threshold_decay_factor = args.threshold_decay_factor
     config.minimum_draw_pool_sol = args.minimum_draw_pool_sol
+    config.activation_floor_pct_of_safe_tvl = args.activation_floor_pct_of_safe_tvl
+    config.minimum_player_deposit_sol = args.minimum_player_deposit_sol
     config.player_arrivals_per_interval = (
         args.player_arrivals_per_interval
         if args.player_arrivals_per_interval is not None
         else config.player_arrivals_per_interval
     )
     config.pending_withdrawal_probability = args.pending_withdrawal_probability
+    config.funding_staker_withdrawal_probability = args.funding_staker_withdrawal_probability
+    config.countdown_staker_withdrawal_probability = args.countdown_staker_withdrawal_probability
     config.safe_erosion_on_risk_win_rate = args.safe_erosion_on_risk_win_rate
     config.risk_tvl_erosion_cap_rate = args.risk_tvl_erosion_cap_rate
     config.countdown_minutes = args.countdown_minutes

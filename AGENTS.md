@@ -108,8 +108,9 @@ Benchmark maximum-capacity settlement before fixing these values. Lower them if 
 1. Update the simulator for the larger-of-two activation floor, `0.01 SOL` Player minimum, fee on erosion, no countdown boost, and immediate Staker withdrawals during `FUNDING`.
 2. Rerun small, medium, and large scenarios with several seeds and verify value conservation.
 3. Update `README.md` with only the accepted model and new results.
-4. Verify the complete Entropy devnet lifecycle and timeout behavior.
-5. Scaffold the Steel program and Next.js app only after the simulation and randomness gates pass.
+4. Build the deterministic Steel program core and Next.js app against fixture state.
+5. Deploy the Fate-controlled Entropy copy and provider on devnet before enabling custody tests.
+6. Verify the complete Entropy lifecycle, missed-slot rejection, retry, refund, and mainnet parity behavior.
 
 ## Simulation Commands
 

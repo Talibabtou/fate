@@ -1,0 +1,11 @@
+[package]
+name = "fate-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+num_enum.workspace = true
+solana-program.workspace = true
+steel.workspace = true

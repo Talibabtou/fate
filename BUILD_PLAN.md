@@ -61,8 +61,8 @@ These items must be resolved before the custody program is implemented.
 
 ## Exact Economic Model
 
-- [ ] Convert every percentage to integer basis points or parts per million. Never calculate payouts with floating point on-chain.
-- [ ] Define a single rounding policy: all divisions round down, and remaining lamports go to the protocol treasury.
+- [x] Convert every percentage to integer basis points or parts per million. Never calculate payouts with floating point on-chain.
+- [x] Define a single rounding policy: all divisions round down, and remaining lamports go to the protocol treasury.
 - [ ] Calculate activation from the immutable Staker TVL snapshot and first-Player timestamp.
 - [ ] Calculate the threshold as:
 
@@ -76,9 +76,9 @@ These items must be resolved before the custody program is implemented.
 
 - [ ] Store each Player deposit's boosted weight at deposit time.
 - [ ] Use `u128` intermediates for weights, shares, fee calculations, and proportional payouts.
-- [ ] Define the early boost with integer math and cap it between `1.00x` and `1.50x`.
-- [ ] Define Player payout, Staker payout, erosion, fee, and dust formulas as executable test vectors.
-- [ ] Prove lamport conservation for both winner sides.
+- [x] Define the early boost with integer math and cap it between `1.00x` and `1.50x`.
+- [x] Define Player payout, Staker payout, erosion, fee, and dust formulas as executable test vectors.
+- [x] Prove lamport conservation for both winner sides.
 - [ ] Prove that Player principal cannot be committed before activation.
 - [ ] Prove that Staker winnings and erosion are reflected by vault share value.
 
@@ -111,7 +111,7 @@ fate/
   BUILD_PLAN.md         This checklist
 ```
 
-- [ ] Initialize a root Cargo workspace containing `api` and `program`.
+- [x] Initialize a root Cargo workspace containing `api` and `program`.
 - [ ] Follow the layout and account-validation patterns in `repos/steel` and `repos/steel-book`.
 - [ ] Scaffold `app` with Next.js, TypeScript, Tailwind CSS, pnpm, and the App Router.
 - [ ] Add Biome with format, lint, and import-order checks.
@@ -160,7 +160,9 @@ Start with fixed-size registries. This bounds account rent, transaction compute,
 
 ## Randomness
 
-- [ ] Read `repos/entropy` and ORE's `new_var`, `deploy`, and `reset` handlers as the integration references.
+Build order decision: implement the deterministic program and app against fixtures first, then deploy the verified Entropy source under a Fate-controlled devnet ID with a dev-only provider. Custody testing remains blocked until that deployment passes the lifecycle and recovery tests. Mainnet uses the official Entropy ID only after output parity is demonstrated.
+
+- [x] Read `repos/entropy` and ORE's `new_var`, `deploy`, and `reset` handlers as the integration references.
 - [ ] Create a Fate-owned Entropy variable rather than sharing ORE's variable.
 - [ ] Decide when the Entropy variable advances so no random value is knowable before Player deposits close.
 - [ ] Reconcile the five-minute Unix timestamp countdown with Entropy's slot-based `end_at` value.
@@ -171,6 +173,8 @@ Start with fixed-size registries. This bounds account rent, transaction compute,
 - [ ] Define a permissionless two-minute retry path that is compatible with Entropy's commit chain.
 - [ ] Never permit the authority or keeper to replace a valid finalized result.
 - [ ] Add a devnet integration test that opens, samples, reveals, consumes, and advances the Entropy variable.
+
+Live verification on 2026-08-17 found no Entropy program at its declared ID on devnet. The same ID is verified and active on mainnet at Entropy commit `f26ae03cccab6188effb0a170b8123cf4bb54c94`, and the provider seed endpoint is responding. The current source substitutes predictable `keccak(end_at)` data when the target slot has aged out of the recent slot-hash sysvar. Fate must reject that fallback and define a bounded retry or refund path before custody implementation. See `RANDOMNESS_GATE.md`.
 
 ## Program Tests
 

@@ -1,0 +1,19 @@
+[package]
+name = "fate-program"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "fate"
+
+[features]
+default = []
+no-entrypoint = []
+
+[dependencies]
+fate-api.workspace = true
+solana-program.workspace = true
+steel.workspace = true

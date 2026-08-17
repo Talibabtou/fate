@@ -155,6 +155,7 @@ Start with fixed-size registries. This bounds account rent, transaction compute,
 - [x] Treat every Player deposit during countdown as committed immediately.
 - [ ] `lock_draw`: close deposits after countdown and bind the draw to its Entropy request.
 - [ ] `settle_draw`: consume finalized Entropy, select one side, select exactly one wallet, calculate payouts, and make the result immutable.
+  Deterministic selection and payout planning are implemented against fixed entropy fixtures; Entropy validation and custody mutation remain gated.
 - [ ] On a Player win, move the full payout into the winner's claimable balance.
 - [ ] On a Staker win, add the 65% distribution to vault assets and mint jackpot value to the selected Staker without changing other Stakers' ownership fraction.
 - [ ] After settlement, price and execute queued Staker withdrawals.
@@ -176,8 +177,8 @@ Build order decision: implement the deterministic program and app against fixtur
 - [ ] Decide when the Entropy variable advances so no random value is knowable before Player deposits close.
 - [ ] Reconcile the five-minute Unix timestamp countdown with Entropy's slot-based `end_at` value.
 - [ ] Require a finalized Entropy value owned by the expected Entropy program and Fate authority.
-- [ ] Derive separate side and winner samples with domain-separated Keccak hashes containing the draw ID.
-- [ ] Use rejection sampling to prevent modulo bias in side and weighted-wallet selection.
+- [x] Derive separate side and winner samples with domain-separated Keccak hashes containing the draw ID.
+- [x] Use rejection sampling to prevent modulo bias in side and weighted-wallet selection.
 - [ ] Prevent reuse of one Entropy result across draw IDs.
 - [ ] Define a permissionless two-minute retry path that is compatible with Entropy's commit chain.
 - [ ] Never permit the authority or keeper to replace a valid finalized result.

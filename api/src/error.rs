@@ -59,6 +59,12 @@ pub enum FateError {
 
     #[error("Player has no claimable balance")]
     NothingToClaim = 18,
+
+    #[error("Settlement state is internally inconsistent")]
+    InvalidSettlementState = 19,
+
+    #[error("Unbiased selection exhausted its deterministic candidates")]
+    SelectionRetriesExhausted = 20,
 }
 
 error!(FateError);

@@ -159,9 +159,9 @@ Start with fixed-size registries. This bounds account rent, transaction compute,
 - [ ] On a Staker win, add the 65% distribution to vault assets and mint jackpot value to the selected Staker without changing other Stakers' ownership fraction.
 - [ ] After settlement, price and execute queued Staker withdrawals.
 - [ ] After settlement, mint shares for queued Staker deposits at the post-settlement share price.
-- [ ] `claim_player`: transfer the full recorded claim once and mark it claimed.
-- [ ] `pause`: stop new deposits and activation.
-- [ ] `unpause`: reopen new deposits and activation.
+- [x] `claim_player`: transfer the full recorded claim once and mark it claimed.
+- [x] `pause`: stop new deposits and activation.
+- [x] `unpause`: reopen new deposits and activation.
 - [ ] Ensure pause never blocks pending Player refunds, Staker exits, locked-draw settlement, or claims.
 - [ ] Emit compact events for deposits, refunds, activation, lock, settlement, queued Staker actions, claims, and pause changes.
 

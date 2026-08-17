@@ -9,6 +9,9 @@ pub enum FateInstruction {
     DepositPlayer = 3,
     RefundPlayer = 4,
     ActivateDraw = 5,
+    Pause = 6,
+    Unpause = 7,
+    ClaimPlayer = 8,
 }
 
 #[repr(C)]
@@ -41,12 +44,29 @@ pub struct RefundPlayer {}
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct ActivateDraw {}
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct Pause {}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct Unpause {}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct ClaimPlayer {
+    pub draw_id: [u8; 8],
+}
+
 instruction!(FateInstruction, Initialize);
 instruction!(FateInstruction, DepositStake);
 instruction!(FateInstruction, RequestStakeWithdrawal);
 instruction!(FateInstruction, DepositPlayer);
 instruction!(FateInstruction, RefundPlayer);
 instruction!(FateInstruction, ActivateDraw);
+instruction!(FateInstruction, Pause);
+instruction!(FateInstruction, Unpause);
+instruction!(FateInstruction, ClaimPlayer);
 
 #[cfg(test)]
 mod tests {
@@ -100,5 +120,21 @@ mod tests {
     fn activate_draw_wire_format_is_stable() {
         let bytes = ActivateDraw {}.to_bytes();
         assert_eq!(bytes, [FateInstruction::ActivateDraw as u8]);
+    }
+
+    #[test]
+    fn pause_wire_formats_are_stable() {
+        assert_eq!(Pause {}.to_bytes(), [FateInstruction::Pause as u8]);
+        assert_eq!(Unpause {}.to_bytes(), [FateInstruction::Unpause as u8]);
+    }
+
+    #[test]
+    fn player_claim_wire_format_is_stable() {
+        let bytes = ClaimPlayer {
+            draw_id: 42u64.to_le_bytes(),
+        }
+        .to_bytes();
+        assert_eq!(bytes[0], FateInstruction::ClaimPlayer as u8);
+        assert_eq!(&bytes[1..], &42u64.to_le_bytes());
     }
 }

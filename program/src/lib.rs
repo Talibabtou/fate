@@ -2,19 +2,23 @@
 #![allow(unexpected_cfgs)]
 
 mod activate_draw;
+mod claim_player;
 mod deposit_player;
 mod deposit_stake;
 mod initialize;
 mod refund_player;
 mod request_stake_withdrawal;
+mod set_pause;
 
 use activate_draw::*;
+use claim_player::*;
 use deposit_player::*;
 use deposit_stake::*;
 use fate_api::prelude::*;
 use initialize::*;
 use refund_player::*;
 use request_stake_withdrawal::*;
+use set_pause::*;
 use steel::*;
 
 pub fn process_instruction(
@@ -33,6 +37,9 @@ pub fn process_instruction(
         FateInstruction::DepositPlayer => process_deposit_player(program_id, accounts, data),
         FateInstruction::RefundPlayer => process_refund_player(program_id, accounts, data),
         FateInstruction::ActivateDraw => process_activate_draw(program_id, accounts, data),
+        FateInstruction::Pause => process_set_pause(program_id, accounts, data, true),
+        FateInstruction::Unpause => process_set_pause(program_id, accounts, data, false),
+        FateInstruction::ClaimPlayer => process_claim_player(program_id, accounts, data),
     }
 }
 

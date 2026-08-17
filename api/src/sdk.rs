@@ -117,6 +117,43 @@ pub fn activate_draw(program_id: Pubkey, draw_id: u64) -> Instruction {
     }
 }
 
+pub fn pause(program_id: Pubkey, authority: Pubkey) -> Instruction {
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new_readonly(authority, true),
+            AccountMeta::new(config_pda(&program_id).0, false),
+        ],
+        data: Pause {}.to_bytes(),
+    }
+}
+
+pub fn unpause(program_id: Pubkey, authority: Pubkey) -> Instruction {
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new_readonly(authority, true),
+            AccountMeta::new(config_pda(&program_id).0, false),
+        ],
+        data: Unpause {}.to_bytes(),
+    }
+}
+
+pub fn claim_player(program_id: Pubkey, player: Pubkey, draw_id: u64) -> Instruction {
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new(player, true),
+            AccountMeta::new(draw_pda(&program_id, draw_id).0, false),
+            AccountMeta::new(player_registry_pda(&program_id, draw_id).0, false),
+        ],
+        data: ClaimPlayer {
+            draw_id: draw_id.to_le_bytes(),
+        }
+        .to_bytes(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -259,5 +296,37 @@ mod tests {
             instruction.accounts[2].pubkey,
             player_registry_pda(&program_id, 7).0
         );
+    }
+
+    #[test]
+    fn pause_builders_require_only_the_configured_authority() {
+        let program_id = Pubkey::new_unique();
+        let authority = Pubkey::new_unique();
+
+        for instruction in [pause(program_id, authority), unpause(program_id, authority)] {
+            assert_eq!(instruction.accounts.len(), 2);
+            assert_eq!(
+                instruction.accounts[0],
+                AccountMeta::new_readonly(authority, true)
+            );
+            assert_eq!(instruction.accounts[1].pubkey, config_pda(&program_id).0);
+            assert!(instruction.accounts[1].is_writable);
+        }
+    }
+
+    #[test]
+    fn player_claim_builder_is_draw_scoped() {
+        let program_id = Pubkey::new_unique();
+        let player = Pubkey::new_unique();
+        let instruction = claim_player(program_id, player, 7);
+
+        assert_eq!(instruction.accounts.len(), 3);
+        assert_eq!(instruction.accounts[0], AccountMeta::new(player, true));
+        assert_eq!(instruction.accounts[1].pubkey, draw_pda(&program_id, 7).0);
+        assert_eq!(
+            instruction.accounts[2].pubkey,
+            player_registry_pda(&program_id, 7).0
+        );
+        assert_eq!(&instruction.data[1..], &7u64.to_le_bytes());
     }
 }

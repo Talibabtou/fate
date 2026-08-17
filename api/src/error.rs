@@ -53,6 +53,12 @@ pub enum FateError {
 
     #[error("Player TVL is below the live activation threshold")]
     ActivationThresholdNotMet = 16,
+
+    #[error("The signer is not authorized for this instruction")]
+    NotAuthorized = 17,
+
+    #[error("Player has no claimable balance")]
+    NothingToClaim = 18,
 }
 
 error!(FateError);

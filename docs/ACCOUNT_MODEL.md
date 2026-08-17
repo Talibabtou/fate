@@ -11,17 +11,17 @@ Fate uses fixed Steel accounts and one Player custody account per draw. All trac
 | Account | Data size | Devnet rent-exempt minimum | Lifetime |
 |---|---:|---:|---|
 | `Config` | 256 bytes | 0.00267264 SOL | Persistent |
-| `StakerVault` | 56 bytes | 0.00128064 SOL | Persistent |
-| `StakerRegistry` | 36,880 bytes | 0.25757568 SOL | Persistent |
+| `StakerVault` | 64 bytes | 0.00133632 SOL | Persistent |
+| `StakerRegistry` | 40,976 bytes | 0.28608384 SOL | Persistent |
 | `Draw` | 320 bytes | 0.00311808 SOL | Retain for recent results, then close |
 | `PlayerRegistry` | 11,288 bytes | 0.07945536 SOL | One per draw; retain while refunds or a claim remain |
 
-Initial configuration plus the first draw costs approximately `0.34410240 SOL` in refundable account rent. Each additional live `Draw` and `PlayerRegistry` pair costs approximately `0.08257344 SOL`. Query rent again before deployment because cluster economics can change.
+Initial configuration plus the first draw costs approximately `0.37266624 SOL` in refundable account rent. Each additional live `Draw` and `PlayerRegistry` pair costs approximately `0.08257344 SOL`. Query rent again before deployment because cluster economics can change.
 
 ## Custody
 
-- `StakerVault` holds Staker SOL plus its own rent reserve. `active_assets_lamports` and `pending_assets_lamports` never include rent.
-- Queued Staker exits remain represented by shares and are priced only after settlement. They are not an additional lamport liability while those shares remain part of `active_assets_lamports`.
+- `StakerVault` holds Staker SOL plus its own rent reserve. `active_assets_lamports`, `pending_assets_lamports`, and `withdrawal_liability_lamports` never include rent.
+- Queued Staker exits remain represented by shares until settlement. Settlement burns those shares at the post-result price and freezes the resulting SOL in `withdrawal_liability_lamports`, which cannot be exposed to later draws.
 - Each `PlayerRegistry` holds that draw's refundable deposits, committed deposits, or winner claim plus its rent reserve.
 - `Config`, `StakerRegistry`, and `Draw` hold only their rent reserves.
 - Protocol fees leave custody accounts during settlement and go to the configured fee treasury.
@@ -29,9 +29,11 @@ Initial configuration plus the first draw costs approximately `0.34410240 SOL` i
 
 On a Player win, erosion moves from `StakerVault` to the draw's `PlayerRegistry`; the fee moves to the treasury; the remaining payout stays claimable in the registry. On a Staker win, the Player registry transfers the jackpot and pro-rata amounts into `StakerVault` and the fee into the treasury.
 
+Settlement prices every queued exit against the same post-result share price, burns those shares, and converts the resulting SOL into a fixed liability before pending deposits become active. Pending deposits then mint at one common post-exit price. On a Staker jackpot, new shares are rounded down so their mint can never reduce the value of existing shares; any representation dust remains in the active vault. If a jackpot is smaller than one share at the current price, it becomes an exact withdrawal liability for the selected Staker instead.
+
 ## Fixed Registries
 
-- `StakerRegistry` contains 512 entries of 72 bytes.
+- `StakerRegistry` contains 512 entries of 80 bytes.
 - `PlayerRegistry` contains 128 entries of 88 bytes.
 - One wallet occupies at most one entry in each registry.
 - Repeat deposits aggregate into the existing wallet entry.
@@ -54,7 +56,7 @@ The first deposit mints one share per lamport. Player losses increase `active_as
 
 ## Closure
 
-- A Staker entry may be reused only when active shares, pending deposits, and queued withdrawals are all zero.
+- A Staker entry may be reused only when active shares, pending deposits, queued withdrawals, and claimable withdrawal SOL are all zero.
 - A Player entry may be reused only when refundable deposits, committed deposits, and claims are all zero.
 - A Staker-side settlement can close its Player registry after settlement because no Player claim remains.
 - A Player-side settlement retains its Player registry until the winner claims.

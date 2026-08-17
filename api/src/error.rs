@@ -57,7 +57,7 @@ pub enum FateError {
     #[error("The signer is not authorized for this instruction")]
     NotAuthorized = 17,
 
-    #[error("Player has no claimable balance")]
+    #[error("Account has no claimable balance")]
     NothingToClaim = 18,
 
     #[error("Settlement state is internally inconsistent")]

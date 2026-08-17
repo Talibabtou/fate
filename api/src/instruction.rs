@@ -12,6 +12,7 @@ pub enum FateInstruction {
     Pause = 6,
     Unpause = 7,
     ClaimPlayer = 8,
+    ClaimStakeWithdrawal = 9,
 }
 
 #[repr(C)]
@@ -58,6 +59,10 @@ pub struct ClaimPlayer {
     pub draw_id: [u8; 8],
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct ClaimStakeWithdrawal {}
+
 instruction!(FateInstruction, Initialize);
 instruction!(FateInstruction, DepositStake);
 instruction!(FateInstruction, RequestStakeWithdrawal);
@@ -67,6 +72,7 @@ instruction!(FateInstruction, ActivateDraw);
 instruction!(FateInstruction, Pause);
 instruction!(FateInstruction, Unpause);
 instruction!(FateInstruction, ClaimPlayer);
+instruction!(FateInstruction, ClaimStakeWithdrawal);
 
 #[cfg(test)]
 mod tests {
@@ -136,5 +142,13 @@ mod tests {
         .to_bytes();
         assert_eq!(bytes[0], FateInstruction::ClaimPlayer as u8);
         assert_eq!(&bytes[1..], &42u64.to_le_bytes());
+    }
+
+    #[test]
+    fn stake_withdrawal_claim_wire_format_is_stable() {
+        assert_eq!(
+            ClaimStakeWithdrawal {}.to_bytes(),
+            [FateInstruction::ClaimStakeWithdrawal as u8]
+        );
     }
 }

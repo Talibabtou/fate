@@ -106,6 +106,7 @@ pub fn process_request_stake_withdrawal(
                 .active_assets_lamports
                 .checked_sub(amount)
                 .and_then(|active| active.checked_add(vault.pending_assets_lamports))
+                .and_then(|assets| assets.checked_add(vault.withdrawal_liability_lamports))
                 .ok_or(FateError::ArithmeticOverflow)?;
             let rent_reserve = Rent::get()?.minimum_balance(StakerVault::SIZE);
             if vault_after.saturating_sub(rent_reserve) < tracked_after {
@@ -230,6 +231,7 @@ fn assert_vault_solvency(
     let tracked_assets = vault
         .active_assets_lamports
         .checked_add(vault.pending_assets_lamports)
+        .and_then(|assets| assets.checked_add(vault.withdrawal_liability_lamports))
         .ok_or(FateError::ArithmeticOverflow)?;
     let rent_reserve = Rent::get()?.minimum_balance(StakerVault::SIZE);
     if vault_info.lamports().saturating_sub(rent_reserve) < tracked_assets {

@@ -154,6 +154,18 @@ pub fn claim_player(program_id: Pubkey, player: Pubkey, draw_id: u64) -> Instruc
     }
 }
 
+pub fn claim_stake_withdrawal(program_id: Pubkey, staker: Pubkey) -> Instruction {
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new(staker, true),
+            AccountMeta::new(staker_vault_pda(&program_id).0, false),
+            AccountMeta::new(staker_registry_pda(&program_id).0, false),
+        ],
+        data: ClaimStakeWithdrawal {}.to_bytes(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -328,5 +340,23 @@ mod tests {
             player_registry_pda(&program_id, 7).0
         );
         assert_eq!(&instruction.data[1..], &7u64.to_le_bytes());
+    }
+
+    #[test]
+    fn stake_withdrawal_claim_builder_targets_persistent_custody() {
+        let program_id = Pubkey::new_unique();
+        let staker = Pubkey::new_unique();
+        let instruction = claim_stake_withdrawal(program_id, staker);
+
+        assert_eq!(instruction.accounts.len(), 3);
+        assert_eq!(instruction.accounts[0], AccountMeta::new(staker, true));
+        assert_eq!(
+            instruction.accounts[1].pubkey,
+            staker_vault_pda(&program_id).0
+        );
+        assert_eq!(
+            instruction.accounts[2].pubkey,
+            staker_registry_pda(&program_id).0
+        );
     }
 }

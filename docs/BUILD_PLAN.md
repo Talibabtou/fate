@@ -78,8 +78,8 @@ These items must be resolved before the custody program is implemented.
 - [x] Define the early boost with integer math and cap it between `1.00x` and `1.50x`.
 - [x] Define Player payout, Staker payout, erosion, fee, and dust formulas as executable test vectors.
 - [x] Prove lamport conservation for both winner sides.
-- [ ] Prove that Player principal cannot be committed before activation.
-- [ ] Prove that Staker winnings and erosion are reflected by vault share value.
+- [x] Prove that Player principal cannot be committed before activation.
+- [x] Prove that Staker winnings and erosion are reflected by vault share value.
 
 
 
@@ -129,9 +129,9 @@ fate/
 Start with fixed-size registries. This bounds account rent, transaction compute, and winner-selection work. Unlimited participants would require a sum tree, proofs, and more state-management code before the product has users.
 
 - [x] Define `Config` with authority, fee treasury, pause state, current draw ID, and program version.
-- [x] Define `StakerVault` with active assets, pending assets, total shares, and queued withdrawal shares.
+- [x] Define `StakerVault` with active assets, pending assets, frozen withdrawal liabilities, total shares, and queued withdrawal shares.
 - [x] Define a fixed `StakerRegistry` with at most 512 wallet entries.
-- [x] Define one persistent Staker entry per wallet inside the registry with active shares, pending deposit, queued withdrawal, and status.
+- [x] Define one persistent Staker entry per wallet inside the registry with active shares, pending deposit, queued withdrawal, frozen withdrawal claim, and status.
 - [x] Define `Draw` with state, timestamps, snapshots, threshold data, Player totals, Entropy reference, result, fee, erosion, winner, and claim state.
 - [x] Define a fixed Player registry with at most 128 wallets in each draw.
 - [x] Store each Player wallet's refundable deposit, committed deposit, and summed boosted weight.
@@ -159,7 +159,9 @@ Start with fixed-size registries. This bounds account rent, transaction compute,
 - [ ] On a Player win, move the full payout into the winner's claimable balance.
 - [ ] On a Staker win, add the 65% distribution to vault assets and mint jackpot value to the selected Staker without changing other Stakers' ownership fraction.
 - [ ] After settlement, price and execute queued Staker withdrawals.
+- [x] `claim_stake_withdrawal`: pay a Staker's frozen post-settlement withdrawal liability without depending on pause or the current draw.
 - [ ] After settlement, mint shares for queued Staker deposits at the post-settlement share price.
+  Both queue transformations are implemented and invariant-tested inside the fixture-only settlement transition; they remain unreachable until the Entropy-gated handler is added.
 - [x] `claim_player`: transfer the full recorded claim once and mark it claimed.
 - [x] `pause`: stop new deposits and activation.
 - [x] `unpause`: reopen new deposits and activation.

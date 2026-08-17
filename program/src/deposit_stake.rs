@@ -90,6 +90,7 @@ pub fn process_deposit_stake(
     let tracked_assets = vault
         .active_assets_lamports
         .checked_add(vault.pending_assets_lamports)
+        .and_then(|assets| assets.checked_add(vault.withdrawal_liability_lamports))
         .ok_or(FateError::ArithmeticOverflow)?;
     let rent_reserve = Rent::get()?.minimum_balance(StakerVault::SIZE);
     let custody_assets = staker_vault_info.lamports().saturating_sub(rent_reserve);

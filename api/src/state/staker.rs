@@ -6,12 +6,14 @@ use super::FateAccount;
 
 pub const STAKER_STATUS_OCCUPIED: u64 = 1 << 0;
 pub const STAKER_STATUS_WITHDRAWAL_QUEUED: u64 = 1 << 1;
+pub const STAKER_STATUS_WITHDRAWAL_CLAIMABLE: u64 = 1 << 2;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Pod, Zeroable)]
 pub struct StakerVault {
     pub active_assets_lamports: u64,
     pub pending_assets_lamports: u64,
+    pub withdrawal_liability_lamports: u64,
     pub total_shares: u64,
     pub queued_withdrawal_shares: u64,
     pub lifetime_player_losses_lamports: u64,
@@ -50,6 +52,7 @@ pub struct StakerEntry {
     pub active_shares: u64,
     pub pending_deposit_lamports: u64,
     pub queued_withdrawal_shares: u64,
+    pub claimable_withdrawal_lamports: u64,
     pub lifetime_deposited_lamports: u64,
     pub status: u64,
 }
@@ -63,6 +66,7 @@ impl StakerEntry {
         self.active_shares == 0
             && self.pending_deposit_lamports == 0
             && self.queued_withdrawal_shares == 0
+            && self.claimable_withdrawal_lamports == 0
     }
 }
 
@@ -168,7 +172,7 @@ mod tests {
 
     #[test]
     fn account_sizes_remain_bounded() {
-        assert_eq!(StakerVault::SIZE, 56);
-        assert_eq!(StakerRegistry::SIZE, 36_880);
+        assert_eq!(StakerVault::SIZE, 64);
+        assert_eq!(StakerRegistry::SIZE, 40_976);
     }
 }

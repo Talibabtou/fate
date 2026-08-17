@@ -10,7 +10,7 @@ use crate::{
     state::{
         Draw, DrawPhase, PlayerEntry, PlayerRegistry, StakerEntry, StakerRegistry, StakerVault,
         WinnerSide, PLAYER_STATUS_OCCUPIED, STAKER_STATUS_OCCUPIED,
-        STAKER_STATUS_WITHDRAWAL_QUEUED,
+        STAKER_STATUS_WITHDRAWAL_CLAIMABLE, STAKER_STATUS_WITHDRAWAL_QUEUED,
     },
 };
 
@@ -164,6 +164,7 @@ fn validate_staker_positions(
     let mut active_shares = 0u64;
     let mut pending_lamports = 0u64;
     let mut queued_shares = 0u64;
+    let mut claimable_lamports = 0u64;
     for entry in &registry.entries {
         if !entry.is_occupied() {
             if *entry != StakerEntry::zeroed() {
@@ -182,6 +183,11 @@ fn validate_staker_positions(
                 0
             } else {
                 STAKER_STATUS_WITHDRAWAL_QUEUED
+            }
+            | if entry.claimable_withdrawal_lamports == 0 {
+                0
+            } else {
+                STAKER_STATUS_WITHDRAWAL_CLAIMABLE
             };
         if entry.status != expected_status {
             return Err(FateError::InvalidSettlementState);
@@ -198,12 +204,16 @@ fn validate_staker_positions(
         queued_shares = queued_shares
             .checked_add(entry.queued_withdrawal_shares)
             .ok_or(FateError::ArithmeticOverflow)?;
+        claimable_lamports = claimable_lamports
+            .checked_add(entry.claimable_withdrawal_lamports)
+            .ok_or(FateError::ArithmeticOverflow)?;
     }
 
     if occupied_entries != registry.occupied_entries
         || active_shares != vault.total_shares
         || pending_lamports != vault.pending_assets_lamports
         || queued_shares != vault.queued_withdrawal_shares
+        || claimable_lamports != vault.withdrawal_liability_lamports
     {
         return Err(FateError::InvalidSettlementState);
     }

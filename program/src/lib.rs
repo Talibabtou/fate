@@ -3,6 +3,7 @@
 
 mod activate_draw;
 mod claim_player;
+mod claim_stake_withdrawal;
 mod deposit_player;
 mod deposit_stake;
 mod initialize;
@@ -12,6 +13,7 @@ mod set_pause;
 
 use activate_draw::*;
 use claim_player::*;
+use claim_stake_withdrawal::*;
 use deposit_player::*;
 use deposit_stake::*;
 use fate_api::prelude::*;
@@ -40,6 +42,9 @@ pub fn process_instruction(
         FateInstruction::Pause => process_set_pause(program_id, accounts, data, true),
         FateInstruction::Unpause => process_set_pause(program_id, accounts, data, false),
         FateInstruction::ClaimPlayer => process_claim_player(program_id, accounts, data),
+        FateInstruction::ClaimStakeWithdrawal => {
+            process_claim_stake_withdrawal(program_id, accounts, data)
+        }
     }
 }
 

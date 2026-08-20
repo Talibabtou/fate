@@ -37,3 +37,6 @@ data-simulation/parameter-study/*_runs.csv
 .vscode/
 *.swp
 *~
+
+# openzoo HRR bind record
+.hrr-context.json

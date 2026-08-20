@@ -12,7 +12,36 @@ Before changing protocol behavior, simulation assumptions, program state, or tra
 
 When these files disagree, checked decisions in `docs/BUILD_PLAN.md` take precedence until the simulator and README are updated. Do not silently resolve an economic conflict in code.
 
-For Solana program, client, RPC, testing, or deployment work, use the globally installed `solana-dev` skill and the references it routes to. Read its `references/security.md` before implementing or reviewing an instruction, and use the configured Solana Developer MCP to verify version-sensitive guidance. Fate's explicit Steel direction overrides the skill's default Anchor or Pinocchio framework recommendation.
+## Skills
+
+Installed skills, and when to reach for them. Before starting any non-trivial task, ask which of these applies — the right skill is usually cheaper than doing the work unaided.
+
+**Solana work** (program, client, RPC, testing, deployment):
+
+- `solana-kit` — `@solana/kit` client, RPC, subscriptions, transaction construction. Use for all app-side chain code.
+- `solana-kit-migration` — porting `@solana/web3.js` v1 patterns to `@solana/kit`.
+- `solana-agent-kit` — only if agent-driven onchain actions are ever in scope. Not currently part of Fate.
+
+Fate's explicit Steel direction overrides any framework recommendation these skills make (they lean Anchor). Fate uses Steel; do not let a skill talk you into Anchor.
+
+**Token efficiency** — this project runs on metered credit, so treat token cost as a real constraint:
+
+- `caveman` — ultra-compressed output mode, ~65% fewer output tokens with technical accuracy kept. Use for long mechanical passes: bulk refactors, repetitive edits, status sweeps, anything where prose polish is wasted. Do not use for user-facing copy, docs, or the README.
+- `caveman-compress` — compress an existing context or document instead of re-reading it whole.
+- `caveman-explore` / `caveman-discover` — cheap codebase orientation. Prefer these over unaided broad `grep`/`Read` sweeps when mapping unfamiliar areas.
+- `cavecrew` — parallel multi-agent fan-out for work that genuinely splits.
+
+**Code quality**:
+
+- `ponytail` — lazy-senior-dev review. Run it before accepting new code: it hunts overkill abstraction, duplicated logic, and unnecessary work. The best code is the code never written. Especially valuable on the Rust program, where a needless abstraction costs compute units and rent.
+- `caveman-evidence-review` — verify claims against actual code instead of trusting a summary.
+
+**Writing** (README, docs, product copy, commit messages):
+
+- `anti-ai-slop-writing` / `humanizer` — strip AI writing tells. Use for anything a human reads: README, `docs/`, PR descriptions, UI copy.
+- `caveman-commit` — commit messages.
+
+Never let a skill's default style override the terminology rules below. Staker and Player are non-negotiable in all output.
 
 ## Terminology
 

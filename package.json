@@ -1,7 +1,7 @@
 {
   "name": "fate",
   "private": true,
-  "packageManager": "pnpm@11.5.2",
+  "packageManager": "pnpm@11.22.0",
   "scripts": {
     "biome:check": "biome check app",
     "check": "pnpm biome:check && pnpm keeper:check",
@@ -14,6 +14,6 @@
     "lint": "biome lint app"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.8"
+    "@biomejs/biome": "^2.5.9"
   }
 }

@@ -2,7 +2,7 @@
 
 This checklist records the settled implementation choices and build order for the first devnet version of Fate's single-page Next.js dApp and Solana program.
 
-Last fully reconciled with the product model, simulator, program, keeper, and current frontend integration guidance: 2026-08-23.
+Last fully reconciled with the product model, simulator, program, keeper, and current frontend integration guidance: 2026-08-24.
 
 ## Product Decisions
 
@@ -115,7 +115,7 @@ fate/
 - [x] Follow the layout and account-validation patterns in `repos/steel` and `repos/steel-book`.
 - [ ] Scaffold `app` with Next.js, TypeScript, Tailwind CSS, pnpm, and the App Router.
 - [x] Add Biome with format, lint, and import-order checks for the keeper and app TypeScript.
-- [ ] Add root commands for program tests, app checks, and devnet configuration. Biome, TypeScript, and keeper-test commands are available; program and devnet orchestration remain.
+- [x] Add root commands for program tests, production-feature tests, SBF builds, app checks/tests, localnet and devnet configuration validation, localnet e2e, and the keeper batch. Devnet deployment remains a guarded manual step.
 - [x] Document required tool versions and environment variables.
 - [x] Keep RPC URLs, Privy app ID, program ID, Entropy addresses, and keeper keys out of source control.
 
@@ -135,7 +135,7 @@ Use per-wallet PDAs and an authenticated weighted tree. Never make activation or
 - [x] Derive every PDA from fixed prefixes and explicit IDs.
 - [x] Calculate account rent and publish it in the technical notes.
 - [x] Bound long-term rent by closing settled Player positions, draw-scoped weight pages, and expired Draw accounts; return rent only to each recorded payer.
-- [ ] Benchmark weighted-path deposit, refund, withdrawal, and settlement compute and packet size.
+- [x] Benchmark weighted-path transaction compute and packet size. The eight-page SVM path measured 2,811 CU and 704 bytes for a first Player deposit, and 408 CU and 704 bytes for a repeat deposit; refund, withdrawal, and settlement still need measurements under their maximum account paths.
 - [x] Prove the old 116-Player boundary is gone with a 117-wallet runtime test.
 
 ## Program Instructions
@@ -182,7 +182,7 @@ Verification on 2026-08-17 found no Entropy program at its declared ID on devnet
 
 ## Program Tests
 
-The SVM lifecycle runs through the real Solana runtime and proves that 117 distinct Player wallets can enter one draw. It separately covers initialization, Staker/Player deposits, activation, countdown locking, weighted-path settlement, Player claim, position/page rent cleanup, and creation of the following draw. The localnet audit harness now covers adversarial phase and authority checks, funding refunds and withdrawals, direct donations, custody checks, both deterministic settlement sides, double-settlement and double-claim rejection, pause-safe settlement, draw cleanup, next-draw creation, and the final-Staker exit guard. Broader account-fuzz, rounding-boundary, long keeper batch, and mainnet Entropy validation remain pending.
+The SVM lifecycle runs through the real Solana runtime and proves that 117 distinct Player wallets can enter one draw. It separately covers initialization, Staker/Player deposits, activation, countdown locking, weighted-path settlement, Player claim, position/page rent cleanup, and creation of the following draw. The localnet audit harness now covers adversarial phase and authority checks, funding refunds and withdrawals, direct donations, custody checks, both deterministic settlement sides, double-settlement and double-claim rejection, pause-safe settlement, draw cleanup, next-draw creation, and the final-Staker exit guard. Deterministic math now has randomized lamport-conservation and overflow-boundary coverage, and program dispatch has malformed wire/account-list tests; broad substituted-account fuzzing and mainnet Entropy validation remain pending.
 
 - [ ] Test all state transitions and reject transitions from the wrong phase.
 - [ ] Test every instruction's owner, data-length, discriminator, signer, writable/read-only, PDA seed, canonical bump, and stored-relationship validation.
@@ -199,13 +199,13 @@ The SVM lifecycle runs through the real Solana runtime and proves that 117 disti
 - [x] Test Staker share-price gains, erosion, jackpot share minting, deposits, and withdrawals.
 - [x] Test zero losing-Player deposits so a solo Player's own principal is never charged as profit.
 - [x] Test the 5% fee on erosion.
-- [ ] Test every rounding remainder and overflow boundary.
+- [x] Test every covered rounding remainder and arithmetic overflow boundary; retain a broader fuzz campaign as a separate security gate.
 - [ ] Test malformed, substituted, duplicate, non-writable, and incorrectly owned accounts.
 - [x] Test unauthorized administration and false Entropy accounts.
 - [x] Test double settlement, double claim, replay rejection, and stale phase transitions. Production Entropy freshness remains pending.
 - [x] Test expired-account closure cannot strand refunds or claims, close a recent draw, redirect rent, or close twice.
 - [x] Test paused-state exits and locked-draw settlement.
-- [ ] Run randomized invariant tests for lamport conservation and share ownership.
+- [x] Run 10,000 randomized settlement invariant cases for lamport conservation, exact fee remainder assignment, and Staker split conservation. Randomized tree/share ownership invariants remain part of the security review.
 - [x] Run `steel test`, `steel build`, and `cargo test-sbf` for the deterministic devnet baseline.
 - [ ] Rerun the full Rust, SBF, and production-artifact test matrix after the mainnet Entropy-gated instructions are complete.
 
@@ -226,12 +226,12 @@ The keeper is a small script, not a service platform. State transitions remain c
 ## Localnet Gate
 
 - [x] Build and deploy the `dev-randomness,fast-localnet` artifact to a clean local validator, then initialize and exercise the complete minimal account path, including weighted-tree pages. The fast fixture uses a 30-second countdown; the normal artifact remains five minutes.
-- [ ] Run the keeper through at least twelve consecutive draws to cover both deterministic sides, recent-history rollover, and storage cleanup.
+- [x] Run the keeper through at least twelve consecutive draws to cover both deterministic sides, recent-history rollover, and storage cleanup. The 2026-08-24 localnet batch passed 12 draws, alternated deterministic sides, rolled the recent ring to draw IDs 11 through 2, and converged cleanup.
 - [x] Exercise deposits, refunds, activation, locking, both settlements, Player claims, Staker withdrawals, frozen activated exits, pause-safe settlement, and account closure through local RPC transactions.
-- [ ] Stop and restart the keeper during each actionable phase and confirm it resumes safely without privileged state or duplicate transitions.
+- [x] Stop and restart the keeper during each actionable phase and confirm it resumes safely without privileged state or duplicate transitions. The batch launched a fresh `keeper.ts --once` process for each observed, activation, lock, and settlement transition: 48 keeper restarts, ending in `KEEPER_BATCH_PASS`.
 - [ ] Reconcile every localnet balance delta, fee, claim, liability, and rent refund with the Rust economic model before devnet deployment.
 
-The verified localnet audit on 2026-08-23 deployed program `BRBMYpjn9hCw9h5T7efxm1qAeHFi8JaGuubioTBQ13zU` with placeholder Entropy accounts and ended with `LOCALNET_AUDIT_PASS`. The fast-localnet artifact used a 30-second countdown and covered reinitialization rejection, pause authorization, paused deposits, funding refund/reset, funding withdrawal and threshold recalculation, direct vault donation, activation boundaries, frozen Staker exits, both deterministic settlement sides, double settlement rejection, Player claim and double-claim rejection, position/page cleanup, paused settlement, the last-Staker exit guard, final refund, and final withdrawal. A full fee-by-fee economic reconciliation and a twelve-draw keeper restart batch remain open.
+The verified localnet audit on 2026-08-23 deployed program `BRBMYpjn9hCw9h5T7efxm1qAeHFi8JaGuubioTBQ13zU` with placeholder Entropy accounts and ended with `LOCALNET_AUDIT_PASS`. The fast-localnet artifact used a 30-second countdown and covered reinitialization rejection, pause authorization, paused deposits, funding refund/reset, funding withdrawal and threshold recalculation, direct vault donation, activation boundaries, frozen Staker exits, both deterministic settlement sides, double settlement rejection, Player claim and double-claim rejection, position/page cleanup, paused settlement, the last-Staker exit guard, final refund, and final withdrawal. The 2026-08-24 keeper batch ended with `KEEPER_BATCH_PASS` after 12 draws and 48 fresh keeper processes, including recent-history rollover and cleanup convergence. A full fee-by-fee economic reconciliation remains open.
 
 ## Next.js Foundation
 
@@ -323,7 +323,7 @@ One segmented control changes the central action between Staker and Player. The 
 ## Mainnet Gates
 
 - [ ] Replace synthetic arrival assumptions with observed devnet behavior.
-- [ ] Benchmark weighted-path compute, transaction size, contention, and rent under observed demand.
+- [ ] Benchmark weighted-path refund, withdrawal, settlement, contention, and rent under observed demand. Deposit-path compute and packet measurements are recorded above.
 - [ ] Complete an independent Solana program security review.
 - [ ] Review Entropy's production status, operator assumptions, outage behavior, and economic security.
 - [ ] Move upgrade and treasury authority to a multisig.

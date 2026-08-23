@@ -1,17 +1,13 @@
 import {
   AccountRole,
-  addSignersToInstruction,
-  address,
-  createClient,
   type Address,
+  address,
+  addSignersToInstruction,
+  createClient,
   type Instruction,
 } from "@solana/kit";
 import { solanaRpc } from "@solana/kit-plugin-rpc";
-import {
-  identityFromFile,
-  payerFromFile,
-  signerFromFile,
-} from "@solana/kit-plugin-signer";
+import { identityFromFile, payerFromFile } from "@solana/kit-plugin-signer";
 import {
   decodeConfig,
   decodeDraw,
@@ -22,8 +18,6 @@ import {
   fateAddresses,
   keeperInstruction,
   participantAddresses,
-  type ConfigAccount,
-  type DrawAccount,
 } from "./fate-client.ts";
 
 const RPC_URL = process.env.FATE_LOCALNET_RPC_URL?.trim() || "http://127.0.0.1:8899";
@@ -44,7 +38,7 @@ function required(name: string) {
 
 async function createFateClient(keypairPath: string) {
   return createClient()
-    .use(signerFromFile(keypairPath))
+    .use(payerFromFile(keypairPath))
     .use(
       solanaRpc({
         rpcUrl: RPC_URL,
@@ -82,10 +76,7 @@ function instructionData(tag: number, value?: bigint) {
   return data;
 }
 
-function makeInstruction(
-  accounts: Instruction["accounts"],
-  data: Uint8Array,
-): Instruction {
+function makeInstruction(accounts: Instruction["accounts"], data: Uint8Array): Instruction {
   return { programAddress: PROGRAM_ADDRESS, accounts, data };
 }
 
@@ -139,7 +130,10 @@ function decodeVault(data: Uint8Array) {
   if (data.length !== 56 || data[0] !== 101) throw new Error("invalid vault account");
   return {
     activeAssets: new DataView(data.buffer, data.byteOffset, data.byteLength).getBigUint64(8, true),
-    withdrawalLiability: new DataView(data.buffer, data.byteOffset, data.byteLength).getBigUint64(16, true),
+    withdrawalLiability: new DataView(data.buffer, data.byteOffset, data.byteLength).getBigUint64(
+      16,
+      true,
+    ),
     totalShares: new DataView(data.buffer, data.byteOffset, data.byteLength).getBigUint64(24, true),
   };
 }
@@ -157,10 +151,16 @@ async function assertCustody(client: FateClient, drawId: bigint) {
   const vaultAccount = decodeVault(await accountData(client, vault));
   const rentDraw = await client.rpc.getMinimumBalanceForRentExemption(344n).send();
   const rentVault = await client.rpc.getMinimumBalanceForRentExemption(56n).send();
-  if (drawBalance - BigInt(rentDraw) < drawAccount.playerTvlLamports + drawAccount.outstandingPlayerClaimLamports) {
+  if (
+    drawBalance - BigInt(rentDraw) <
+    drawAccount.playerTvlLamports + drawAccount.outstandingPlayerClaimLamports
+  ) {
     throw new Error(`draw custody invariant failed for draw ${drawId}`);
   }
-  if (vaultBalance - BigInt(rentVault) < vaultAccount.activeAssets + vaultAccount.withdrawalLiability) {
+  if (
+    vaultBalance - BigInt(rentVault) <
+    vaultAccount.activeAssets + vaultAccount.withdrawalLiability
+  ) {
     throw new Error("vault custody invariant failed");
   }
 }
@@ -180,7 +180,11 @@ async function expectFailure(client: FateClient, label: string, instruction: Ins
   throw new Error(`${label}: transaction unexpectedly succeeded`);
 }
 
-function systemTransferInstruction(source: Address, destination: Address, amount: bigint): Instruction {
+function systemTransferInstruction(
+  source: Address,
+  destination: Address,
+  amount: bigint,
+): Instruction {
   const data = new Uint8Array(12);
   new DataView(data.buffer).setUint32(0, 2, true);
   new DataView(data.buffer).setBigUint64(4, amount, true);
@@ -341,24 +345,6 @@ async function closePlayerPositionInstruction(
   );
 }
 
-async function closePlayerPagesInstruction(
-  player: Address,
-  drawId: bigint,
-  draw: Address,
-  pages: Address[],
-) {
-  return pages.map((page) =>
-    makeInstruction(
-      [
-        { address: draw, role: AccountRole.WRITABLE },
-        { address: page, role: AccountRole.WRITABLE },
-        { address: player, role: AccountRole.WRITABLE },
-      ],
-      instructionData(16, drawId),
-    ),
-  );
-}
-
 async function requestWithdrawalInstruction(
   staker: Address,
   player: Address,
@@ -385,26 +371,6 @@ async function requestWithdrawalInstruction(
       ...stakerPath.map((page) => ({ address: page, role: AccountRole.WRITABLE })),
     ],
     instructionData(2, shares),
-  );
-}
-
-async function claimWithdrawalInstruction(staker: Address) {
-  const { vault } = await fateAddresses(PROGRAM_ADDRESS, 0n);
-  const { stakerPosition } = await participantAddresses(
-    PROGRAM_ADDRESS,
-    0n,
-    staker,
-    0n,
-    staker,
-    0n,
-  );
-  return makeInstruction(
-    [
-      { address: staker, role: AccountRole.WRITABLE_SIGNER },
-      { address: vault, role: AccountRole.WRITABLE },
-      { address: stakerPosition, role: AccountRole.WRITABLE },
-    ],
-    instructionData(9),
   );
 }
 
@@ -481,7 +447,8 @@ async function cleanupPlayers(
       player.authority,
       0n,
     );
-    if (await accountExists(client, playerPosition)) throw new Error("Player position was not closed");
+    if (await accountExists(client, playerPosition))
+      throw new Error("Player position was not closed");
   }
   for (const page of playerPages.keys()) {
     if (await accountExists(client, page)) throw new Error(`Player page was not closed: ${page}`);
@@ -517,11 +484,7 @@ async function run() {
     "initialize with fake Entropy accounts",
     await initializeInstruction(payer, staker),
   );
-  await expectFailure(
-    payerClient,
-    "reinitialize",
-    await initializeInstruction(payer, staker),
-  );
+  await expectFailure(payerClient, "reinitialize", await initializeInstruction(payer, staker));
   await send(
     payerAuthorityClient,
     "pause protocol",
@@ -552,11 +515,23 @@ async function run() {
     ),
   );
 
-  await send(stakerClient, "deposit 1 SOL Staker leaf 0", await depositStakeInstruction(staker, player, SOL, 0n, 0n));
-  await send(payerClient, "deposit 1 SOL Staker leaf 1", await depositStakeInstruction(payer, player, SOL, 0n, 1n));
+  await send(
+    stakerClient,
+    "deposit 1 SOL Staker leaf 0",
+    await depositStakeInstruction(staker, player, SOL, 0n, 0n),
+  );
+  await send(
+    payerClient,
+    "deposit 1 SOL Staker leaf 1",
+    await depositStakeInstruction(payer, player, SOL, 0n, 1n),
+  );
   await assertCustody(payerClient, 0n);
 
-  await send(playerClient, "deposit pending Player for refund reset", await depositPlayerInstruction(player, staker, 10_000_000n, 0n, 0n));
+  await send(
+    playerClient,
+    "deposit pending Player for refund reset",
+    await depositPlayerInstruction(player, staker, 10_000_000n, 0n, 0n),
+  );
   let draw = await readDraw(payerClient, 0n);
   if (draw.decoded.firstPlayerAt <= 0n || draw.decoded.playerTvlLamports !== 10_000_000n) {
     throw new Error("first Player funding snapshot was not created");
@@ -567,20 +542,40 @@ async function run() {
     throw new Error("funding reset did not clear the pending draw");
   }
 
-  await send(playerClient, "deposit 0.1 SOL Player leaf 0", await depositPlayerInstruction(player, staker, 100_000_000n, 0n, 0n));
-  await send(payerClient, "deposit 0.05 SOL Player leaf 1", await depositPlayerInstruction(payer, staker, 50_000_000n, 0n, 1n));
+  await send(
+    playerClient,
+    "deposit 0.1 SOL Player leaf 0",
+    await depositPlayerInstruction(player, staker, 100_000_000n, 0n, 0n),
+  );
+  await send(
+    payerClient,
+    "deposit 0.05 SOL Player leaf 1",
+    await depositPlayerInstruction(payer, staker, 50_000_000n, 0n, 1n),
+  );
   draw = await readDraw(payerClient, 0n);
-  if (draw.decoded.stakerTvlSnapshot !== 2n * SOL || draw.decoded.playerTvlLamports !== 150_000_000n) {
+  if (
+    draw.decoded.stakerTvlSnapshot !== 2n * SOL ||
+    draw.decoded.playerTvlLamports !== 150_000_000n
+  ) {
     throw new Error("multi-wallet funding state mismatch");
   }
 
   const payerStakerPosition = decodeStakerPosition(
-    await accountData(payerClient, (await participantAddresses(PROGRAM_ADDRESS, 0n, player, 0n, payer, 1n)).stakerPosition),
+    await accountData(
+      payerClient,
+      (await participantAddresses(PROGRAM_ADDRESS, 0n, player, 0n, payer, 1n)).stakerPosition,
+    ),
   );
   await send(
     payerClient,
     "withdraw 0.5 SOL Staker during funding",
-    await requestWithdrawalInstruction(payer, player, 0n, payerStakerPosition.activeShares / 2n, 1n),
+    await requestWithdrawalInstruction(
+      payer,
+      player,
+      0n,
+      payerStakerPosition.activeShares / 2n,
+      1n,
+    ),
   );
   draw = await readDraw(payerClient, 0n);
   if (draw.decoded.stakerTvlSnapshot !== 1_500_000_000n) {
@@ -589,9 +584,16 @@ async function run() {
 
   const donationBefore = await readVault(payerClient);
   const { vault: vaultAddress } = await fateAddresses(PROGRAM_ADDRESS, 0n);
-  await send(payerClient, "donate 1 lamport directly to vault", systemTransferInstruction(payer, vaultAddress, 1n));
+  await send(
+    payerClient,
+    "donate 1 lamport directly to vault",
+    systemTransferInstruction(payer, vaultAddress, 1n),
+  );
   const donationAfter = await readVault(payerClient);
-  if (donationAfter.activeAssets !== donationBefore.activeAssets || donationAfter.totalShares !== donationBefore.totalShares) {
+  if (
+    donationAfter.activeAssets !== donationBefore.activeAssets ||
+    donationAfter.totalShares !== donationBefore.totalShares
+  ) {
     throw new Error("direct donation changed tracked vault accounting");
   }
   await assertCustody(payerClient, 0n);
@@ -600,19 +602,45 @@ async function run() {
   draw = await readDraw(payerClient, 0n);
   if (draw.decoded.phase !== 1) throw new Error("draw 0 did not activate");
   const player0Before = decodePlayerPosition(
-    await accountData(playerClient, (await participantAddresses(PROGRAM_ADDRESS, 0n, player, 0n, staker, 0n)).playerPosition),
+    await accountData(
+      playerClient,
+      (await participantAddresses(PROGRAM_ADDRESS, 0n, player, 0n, staker, 0n)).playerPosition,
+    ),
   );
-  await send(playerClient, "deposit countdown Player at 1x", await depositPlayerInstruction(player, staker, 10_000_000n, 0n, 0n));
+  await send(
+    playerClient,
+    "deposit countdown Player at 1x",
+    await depositPlayerInstruction(player, staker, 10_000_000n, 0n, 0n),
+  );
   const player0After = decodePlayerPosition(
-    await accountData(playerClient, (await participantAddresses(PROGRAM_ADDRESS, 0n, player, 0n, staker, 0n)).playerPosition),
+    await accountData(
+      playerClient,
+      (await participantAddresses(PROGRAM_ADDRESS, 0n, player, 0n, staker, 0n)).playerPosition,
+    ),
   );
   if (player0After.weight - player0Before.weight !== 10_000_000n) {
     throw new Error("countdown Player deposit did not receive 1x weight");
   }
-  await expectFailure(payerClient, "deposit Staker after activation", await depositStakeInstruction(staker, player, 100_000_000n, 0n, 0n));
-  await expectFailure(payerClient, "withdrawal after activation", await requestWithdrawalInstruction(payer, player, 0n, 1n, 1n));
-  await expectFailure(playerClient, "refund committed Player", await refundPlayerInstruction(player, 0n, 0n));
-  await expectFailure(payerClient, "lock before countdown deadline", await phaseInstruction(0n, 11));
+  await expectFailure(
+    payerClient,
+    "deposit Staker after activation",
+    await depositStakeInstruction(staker, player, 100_000_000n, 0n, 0n),
+  );
+  await expectFailure(
+    payerClient,
+    "withdrawal after activation",
+    await requestWithdrawalInstruction(payer, player, 0n, 1n, 1n),
+  );
+  await expectFailure(
+    playerClient,
+    "refund committed Player",
+    await refundPlayerInstruction(player, 0n, 0n),
+  );
+  await expectFailure(
+    payerClient,
+    "lock before countdown deadline",
+    await phaseInstruction(0n, 11),
+  );
   const playerParticipants0 = [
     { authority: player, leafIndex: 0n },
     { authority: payer, leafIndex: 1n },
@@ -623,10 +651,40 @@ async function run() {
   ];
   const settlementParticipants0 = devSettlementParticipants(
     0n,
-    await Promise.all(playerParticipants0.map(async ({ authority, leafIndex }) => decodePlayerPosition(await accountData(payerClient, (await participantAddresses(PROGRAM_ADDRESS, 0n, authority, leafIndex, staker, 0n)).playerPosition)))),
-    await Promise.all(stakerParticipants0.map(async ({ authority, leafIndex }) => decodeStakerPosition(await accountData(payerClient, (await participantAddresses(PROGRAM_ADDRESS, 0n, player, 0n, authority, leafIndex)).stakerPosition)))),
+    await Promise.all(
+      playerParticipants0.map(async ({ authority, leafIndex }) =>
+        decodePlayerPosition(
+          await accountData(
+            payerClient,
+            (await participantAddresses(PROGRAM_ADDRESS, 0n, authority, leafIndex, staker, 0n))
+              .playerPosition,
+          ),
+        ),
+      ),
+    ),
+    await Promise.all(
+      stakerParticipants0.map(async ({ authority, leafIndex }) =>
+        decodeStakerPosition(
+          await accountData(
+            payerClient,
+            (await participantAddresses(PROGRAM_ADDRESS, 0n, player, 0n, authority, leafIndex))
+              .stakerPosition,
+          ),
+        ),
+      ),
+    ),
   );
-  await expectFailure(payerClient, "settle before lock", await keeperInstruction("settle", PROGRAM_ADDRESS, payer, await readConfig(payerClient), settlementParticipants0));
+  await expectFailure(
+    payerClient,
+    "settle before lock",
+    await keeperInstruction(
+      "settle",
+      PROGRAM_ADDRESS,
+      payer,
+      await readConfig(payerClient),
+      settlementParticipants0,
+    ),
+  );
   await waitForLock(payerClient, 0n);
   await send(payerClient, "lock draw 0", await phaseInstruction(0n, 11));
   const staleSettlement0 = await keeperInstruction(
@@ -639,21 +697,52 @@ async function run() {
   await settle(payerClient, 0n, payer, settlementParticipants0);
   await expectFailure(payerClient, "double settlement draw 0", staleSettlement0);
   draw = await readDraw(payerClient, 0n);
-  if (draw.decoded.phase !== 4 || drawWinnerSide(draw.data) !== "Player") throw new Error("draw 0 Player settlement failed");
+  if (draw.decoded.phase !== 4 || drawWinnerSide(draw.data) !== "Player")
+    throw new Error("draw 0 Player settlement failed");
   console.log(`draw 0 winner side: ${drawWinnerSide(draw.data)}`);
   await assertCustody(payerClient, 0n);
   const winner0 = settlementParticipants0.player;
-  const winner0Position = decodePlayerPosition(await accountData(payerClient, (await participantAddresses(PROGRAM_ADDRESS, 0n, winner0, settlementParticipants0.playerIndex, staker, 0n)).playerPosition));
+  const winner0Position = decodePlayerPosition(
+    await accountData(
+      payerClient,
+      (
+        await participantAddresses(
+          PROGRAM_ADDRESS,
+          0n,
+          winner0,
+          settlementParticipants0.playerIndex,
+          staker,
+          0n,
+        )
+      ).playerPosition,
+    ),
+  );
   if (winner0Position.claimableLamports === 0n) throw new Error("Player claim was not credited");
   const winner0Client = winner0 === payer ? payerClient : playerClient;
   await send(winner0Client, "claim Player draw 0", await claimPlayerInstruction(winner0, 0n));
-  await expectFailure(winner0Client, "double claim Player draw 0", await claimPlayerInstruction(winner0, 0n));
+  await expectFailure(
+    winner0Client,
+    "double claim Player draw 0",
+    await claimPlayerInstruction(winner0, 0n),
+  );
   await cleanupPlayers(payerClient, 0n, playerParticipants0);
   await assertCustody(payerClient, 0n);
 
-  await send(stakerClient, "deposit 0.1 SOL Staker draw 1", await depositStakeInstruction(staker, player, 100_000_000n, 1n, 0n));
-  await send(playerClient, "deposit 0.1 SOL Player draw 1", await depositPlayerInstruction(player, staker, 100_000_000n, 1n, 0n));
-  await send(payerClient, "deposit 0.05 SOL Player draw 1", await depositPlayerInstruction(payer, staker, 50_000_000n, 1n, 1n));
+  await send(
+    stakerClient,
+    "deposit 0.1 SOL Staker draw 1",
+    await depositStakeInstruction(staker, player, 100_000_000n, 1n, 0n),
+  );
+  await send(
+    playerClient,
+    "deposit 0.1 SOL Player draw 1",
+    await depositPlayerInstruction(player, staker, 100_000_000n, 1n, 0n),
+  );
+  await send(
+    payerClient,
+    "deposit 0.05 SOL Player draw 1",
+    await depositPlayerInstruction(payer, staker, 50_000_000n, 1n, 1n),
+  );
   await send(payerClient, "activate draw 1", await phaseInstruction(1n, 5));
   await send(
     payerAuthorityClient,
@@ -675,12 +764,33 @@ async function run() {
   ];
   const settlementParticipants1 = devSettlementParticipants(
     1n,
-    await Promise.all(playerParticipants1.map(async ({ authority, leafIndex }) => decodePlayerPosition(await accountData(payerClient, (await participantAddresses(PROGRAM_ADDRESS, 1n, authority, leafIndex, staker, 0n)).playerPosition)))),
-    await Promise.all(stakerParticipants1.map(async ({ authority, leafIndex }) => decodeStakerPosition(await accountData(payerClient, (await participantAddresses(PROGRAM_ADDRESS, 1n, player, 0n, authority, leafIndex)).stakerPosition)))),
+    await Promise.all(
+      playerParticipants1.map(async ({ authority, leafIndex }) =>
+        decodePlayerPosition(
+          await accountData(
+            payerClient,
+            (await participantAddresses(PROGRAM_ADDRESS, 1n, authority, leafIndex, staker, 0n))
+              .playerPosition,
+          ),
+        ),
+      ),
+    ),
+    await Promise.all(
+      stakerParticipants1.map(async ({ authority, leafIndex }) =>
+        decodeStakerPosition(
+          await accountData(
+            payerClient,
+            (await participantAddresses(PROGRAM_ADDRESS, 1n, player, 0n, authority, leafIndex))
+              .stakerPosition,
+          ),
+        ),
+      ),
+    ),
   );
   await settle(payerClient, 1n, payer, settlementParticipants1);
   draw = await readDraw(payerClient, 1n);
-  if (draw.decoded.phase !== 4 || drawWinnerSide(draw.data) !== "Staker") throw new Error("draw 1 Staker settlement failed");
+  if (draw.decoded.phase !== 4 || drawWinnerSide(draw.data) !== "Staker")
+    throw new Error("draw 1 Staker settlement failed");
   console.log(`draw 1 winner side: ${drawWinnerSide(draw.data)}`);
   await send(
     payerAuthorityClient,
@@ -694,13 +804,28 @@ async function run() {
   await assertCustody(payerClient, 1n);
 
   const draw2Player = await participantAddresses(PROGRAM_ADDRESS, 2n, player, 0n, staker, 0n);
-  await send(playerClient, "deposit pending Player draw 2", await depositPlayerInstruction(player, staker, 10_000_000n, 2n, 0n));
-  const staker0Draw2 = decodeStakerPosition(await accountData(stakerClient, draw2Player.stakerPosition));
-  const staker1Draw2 = decodeStakerPosition(await accountData(payerClient, (await participantAddresses(PROGRAM_ADDRESS, 2n, player, 0n, payer, 1n)).stakerPosition));
+  await send(
+    playerClient,
+    "deposit pending Player draw 2",
+    await depositPlayerInstruction(player, staker, 10_000_000n, 2n, 0n),
+  );
+  const staker0Draw2 = decodeStakerPosition(
+    await accountData(stakerClient, draw2Player.stakerPosition),
+  );
+  const staker1Draw2 = decodeStakerPosition(
+    await accountData(
+      payerClient,
+      (await participantAddresses(PROGRAM_ADDRESS, 2n, player, 0n, payer, 1n)).stakerPosition,
+    ),
+  );
   let remainingStaker: Address;
   let remainingIndex: bigint;
   if (staker0Draw2.activeShares !== 0n && staker1Draw2.activeShares !== 0n) {
-    await send(stakerClient, "withdraw first Staker in draw 2 funding", await requestWithdrawalInstruction(staker, player, 2n, staker0Draw2.activeShares, 0n));
+    await send(
+      stakerClient,
+      "withdraw first Staker in draw 2 funding",
+      await requestWithdrawalInstruction(staker, player, 2n, staker0Draw2.activeShares, 0n),
+    );
     remainingStaker = payer;
     remainingIndex = 1n;
   } else if (staker0Draw2.activeShares !== 0n) {
@@ -710,14 +835,41 @@ async function run() {
     remainingStaker = payer;
     remainingIndex = 1n;
   }
-  const remainingPositionAddress = (await participantAddresses(PROGRAM_ADDRESS, 2n, player, 0n, remainingStaker, remainingIndex)).stakerPosition;
-  const remainingPosition = decodeStakerPosition(await accountData(payerClient, remainingPositionAddress));
+  const remainingPositionAddress = (
+    await participantAddresses(PROGRAM_ADDRESS, 2n, player, 0n, remainingStaker, remainingIndex)
+  ).stakerPosition;
+  const remainingPosition = decodeStakerPosition(
+    await accountData(payerClient, remainingPositionAddress),
+  );
   const remainingStakerClient = remainingStaker === payer ? payerClient : stakerClient;
-  await expectFailure(remainingStakerClient, "last Staker exit while Player funds remain", await requestWithdrawalInstruction(remainingStaker, player, 2n, remainingPosition.activeShares, remainingIndex));
+  await expectFailure(
+    remainingStakerClient,
+    "last Staker exit while Player funds remain",
+    await requestWithdrawalInstruction(
+      remainingStaker,
+      player,
+      2n,
+      remainingPosition.activeShares,
+      remainingIndex,
+    ),
+  );
   await send(playerClient, "refund Player draw 2", await refundPlayerInstruction(player, 2n, 0n));
-  await send(remainingStakerClient, "withdraw final Staker after refund", await requestWithdrawalInstruction(remainingStaker, player, 2n, remainingPosition.activeShares, remainingIndex));
-  const finalPosition = decodeStakerPosition(await accountData(payerClient, remainingPositionAddress));
-  if (finalPosition.activeShares !== 0n) throw new Error("final funding withdrawal did not clear Staker shares");
+  await send(
+    remainingStakerClient,
+    "withdraw final Staker after refund",
+    await requestWithdrawalInstruction(
+      remainingStaker,
+      player,
+      2n,
+      remainingPosition.activeShares,
+      remainingIndex,
+    ),
+  );
+  const finalPosition = decodeStakerPosition(
+    await accountData(payerClient, remainingPositionAddress),
+  );
+  if (finalPosition.activeShares !== 0n)
+    throw new Error("final funding withdrawal did not clear Staker shares");
   await assertCustody(payerClient, 2n);
 
   console.log("LOCALNET_AUDIT_PASS");

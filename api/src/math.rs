@@ -322,4 +322,61 @@ mod tests {
             Err(FateError::ZeroSelectionWeight)
         );
     }
+
+    fn next_sample(state: &mut u64) -> u64 {
+        *state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1);
+        *state
+    }
+
+    #[test]
+    fn randomized_settlements_conserve_every_lamport() {
+        let mut state = 0xFA7E_2026_u64;
+        for _ in 0..10_000 {
+            let staker_tvl = 1 + next_sample(&mut state) % (u64::MAX / 4);
+            let player_tvl = 1 + next_sample(&mut state) % (u64::MAX / 4);
+            let winner_deposit = next_sample(&mut state) % (player_tvl + 1);
+            let player = player_settlement(staker_tvl, player_tvl, winner_deposit).unwrap();
+            assert_eq!(
+                staker_tvl
+                    - player.staker_erosion_lamports
+                    + player.winner_payout_lamports
+                    + player.protocol_fee_lamports,
+                staker_tvl + player_tvl
+            );
+
+            let staker = staker_settlement(player_tvl).unwrap();
+            assert_eq!(
+                staker.jackpot_lamports + staker.pro_rata_lamports + staker.protocol_fee_lamports,
+                player_tvl
+            );
+        }
+    }
+
+    #[test]
+    fn arithmetic_boundaries_fail_closed_without_losing_rounding_dust() {
+        assert_eq!(mul_div_floor(u64::MAX, u64::MAX, u64::MAX), Ok(u64::MAX));
+        assert_eq!(
+            mul_div_floor(u64::MAX, u64::MAX, 1),
+            Err(FateError::ArithmeticOverflow)
+        );
+        assert_eq!(
+            player_settlement(u64::MAX, u64::MAX, 0),
+            Err(FateError::ArithmeticOverflow)
+        );
+        assert_eq!(
+            boosted_player_weight(u64::MAX, MAX_PLAYER_BOOST_BPS),
+            Ok((u128::from(u64::MAX) * u128::from(MAX_PLAYER_BOOST_BPS))
+                / u128::from(BPS_DENOMINATOR))
+        );
+        assert_eq!(
+            select_weighted_wallet(0, &[u128::MAX, 1]),
+            Err(FateError::ArithmeticOverflow)
+        );
+        assert_eq!(
+            activation_threshold(u64::MAX, u64::MAX),
+            Ok(activation_floor(u64::MAX).unwrap())
+        );
+    }
 }

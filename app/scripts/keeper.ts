@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { type Address, address, createClient, type Instruction } from "@solana/kit";
 import { solanaRpc } from "@solana/kit-plugin-rpc";
-import { signerFromFile } from "@solana/kit-plugin-signer";
+import { payerFromFile } from "@solana/kit-plugin-signer";
 import {
   type CleanupAction,
   cleanupInstruction,
@@ -114,7 +114,7 @@ function errorText(error: unknown) {
 
 async function createKeeperClient(config: KeeperConfig) {
   return createClient()
-    .use(signerFromFile(config.keypairPath))
+    .use(payerFromFile(config.keypairPath))
     .use(
       solanaRpc({
         rpcUrl: config.rpcUrl,

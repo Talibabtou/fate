@@ -41,6 +41,8 @@ Run one read/transition cycle with `pnpm keeper:once`, or keep the normal worker
 
 The keeper validates the RPC genesis hash on devnet, account owner, exact account size, and Steel discriminator before decoding state. It reproduces the feature-gated Keccak selection locally only to locate candidate accounts; the program independently verifies the entropy-derived tree path. It simulates, submits, confirms, and rereads state only when a transition or cleanup action is due. Cleanup discovery scans only exact account sizes, and the program repeats every eligibility, PDA, relationship, and refund-recipient check on-chain.
 
+For the localnet release gate, `app/scripts/keeper-batch-e2e.ts` starts a fresh `keeper.ts --once` process for every observed, activation, lock, and settlement transition. With the `dev-randomness,fast-localnet` artifact and four funded local wallets, run it with the same `FATE_*` variables as `localnet-e2e.ts` plus `KEEPER_KEYPAIR_PATH`; it should end with `KEEPER_BATCH_PASS` after twelve draws. The harness also claims deterministic Player wins, drains cleanup accounts, and verifies the ten-draw recent-history ring.
+
 ## Deployment
 
 Do not run the primary keeper inside Next.js request handlers. Vercel functions are short-lived and request-driven; they do not provide a persistent polling or WebSocket process. Keep the UI and user-signed transactions on Vercel, and run `app/scripts/keeper.ts` from the same repository as a separate worker on a small container service such as Railway, Fly.io, Render, Cloud Run, or a VPS.

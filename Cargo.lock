@@ -1385,6 +1385,7 @@ dependencies = [
 name = "fate-program"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "fate-api",
  "solana-program",
  "solana-program-test",

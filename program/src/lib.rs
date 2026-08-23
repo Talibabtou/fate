@@ -95,3 +95,52 @@ mod production_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod malformed_input_tests {
+    use super::*;
+
+    #[test]
+    fn rejects_empty_and_unknown_instruction_data() {
+        let program_id = Pubkey::new_unique();
+
+        assert_eq!(
+            process_instruction(&program_id, &[], &[]),
+            Err(ProgramError::InvalidInstructionData)
+        );
+        assert_eq!(
+            process_instruction(&program_id, &[], &[u8::MAX]),
+            Err(ProgramError::InvalidInstructionData)
+        );
+    }
+
+    #[test]
+    fn every_instruction_rejects_an_empty_account_slice() {
+        let program_id = Pubkey::new_unique();
+        let instructions = [
+            Initialize {}.to_bytes(),
+            DepositStake { amount: [0; 8] }.to_bytes(),
+            RequestStakeWithdrawal { shares: [0; 8] }.to_bytes(),
+            DepositPlayer { amount: [0; 8] }.to_bytes(),
+            RefundPlayer {}.to_bytes(),
+            ActivateDraw {}.to_bytes(),
+            Pause {}.to_bytes(),
+            Unpause {}.to_bytes(),
+            ClaimPlayer { draw_id: [0; 8] }.to_bytes(),
+            ClaimStakeWithdrawal {}.to_bytes(),
+            LockDraw {}.to_bytes(),
+            SettleDrawDev {}.to_bytes(),
+            CloseDraw { draw_id: [0; 8] }.to_bytes(),
+            ClosePlayerPosition { draw_id: [0; 8] }.to_bytes(),
+            CloseWeightPage { draw_id: [0; 8] }.to_bytes(),
+        ];
+
+        for data in instructions {
+            assert!(
+                process_instruction(&program_id, &[], &data).is_err(),
+                "malformed account list unexpectedly succeeded for tag {}",
+                data[0]
+            );
+        }
+    }
+}

@@ -223,9 +223,101 @@ async fn weighted_paths_settle_claim_and_release_draw_storage() {
     );
 }
 
+#[cfg(feature = "dev-randomness")]
+#[tokio::test]
+async fn weighted_path_compute_and_packet_budget() {
+    let (mut context, program_id, _, _) = start().await;
+    let staker = Keypair::new();
+    let player = Keypair::new();
+    fund(&mut context, &staker.pubkey(), 3 * SOL).await;
+    fund(&mut context, &player.pubkey(), SOL).await;
+    send(
+        &mut context,
+        deposit_stake(program_id, staker.pubkey(), 0, 0, SOL),
+        &[&staker],
+    )
+    .await
+    .unwrap();
+
+    let first = deposit_player(
+        program_id,
+        player.pubkey(),
+        0,
+        0,
+        MINIMUM_PLAYER_DEPOSIT_LAMPORTS,
+    );
+    let first_transaction = signed_transaction(&mut context, first, &[&player]).await;
+    let first_packet_bytes = bincode::serialize(&first_transaction).unwrap().len();
+    let first_units = simulate_units(&mut context, first_transaction).await;
+    send(
+        &mut context,
+        deposit_player(
+            program_id,
+            player.pubkey(),
+            0,
+            0,
+            MINIMUM_PLAYER_DEPOSIT_LAMPORTS,
+        ),
+        &[&player],
+    )
+    .await
+    .unwrap();
+
+    let repeat = deposit_player(
+        program_id,
+        player.pubkey(),
+        0,
+        0,
+        MINIMUM_PLAYER_DEPOSIT_LAMPORTS,
+    );
+    let repeat_transaction = signed_transaction(&mut context, repeat, &[&player]).await;
+    let repeat_packet_bytes = bincode::serialize(&repeat_transaction).unwrap().len();
+    let repeat_units = simulate_units(&mut context, repeat_transaction).await;
+
+    println!(
+        "WEIGHT_PATH_BENCHMARK first_units={first_units} repeat_units={repeat_units} first_packet_bytes={first_packet_bytes} repeat_packet_bytes={repeat_packet_bytes}"
+    );
+    assert!(first_packet_bytes <= 1_232);
+    assert!(repeat_packet_bytes <= 1_232);
+    assert!(first_units < 1_400_000);
+    assert!(repeat_units < 1_400_000);
+}
+
 async fn fund(context: &mut ProgramTestContext, recipient: &Pubkey, lamports: u64) {
     let ix = solana_sdk::system_instruction::transfer(&context.payer.pubkey(), recipient, lamports);
     send(context, ix, &[]).await.unwrap();
+}
+
+#[cfg(feature = "dev-randomness")]
+async fn signed_transaction(
+    context: &mut ProgramTestContext,
+    instruction: Instruction,
+    extra: &[&Keypair],
+) -> Transaction {
+    let blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
+    let mut signers = vec![&context.payer];
+    signers.extend_from_slice(extra);
+    Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&context.payer.pubkey()),
+        &signers,
+        blockhash,
+    )
+}
+
+#[cfg(feature = "dev-randomness")]
+async fn simulate_units(context: &mut ProgramTestContext, transaction: Transaction) -> u64 {
+    let result = context
+        .banks_client
+        .simulate_transaction(transaction)
+        .await
+        .unwrap();
+    let simulation_result = result.result.expect("simulation did not return a result");
+    assert!(
+        simulation_result.is_ok(),
+        "benchmark transaction simulation failed: {simulation_result:?}"
+    );
+    result.simulation_details.unwrap().units_consumed
 }
 
 async fn send(

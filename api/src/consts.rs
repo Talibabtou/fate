@@ -10,6 +10,9 @@ pub const INITIAL_THRESHOLD_BPS: u64 = 100;
 pub const RELATIVE_ACTIVATION_FLOOR_BPS: u64 = 10;
 pub const THRESHOLD_DECAY_BPS: u64 = 9_000;
 pub const THRESHOLD_DECAY_INTERVAL_SECONDS: u64 = 10 * 60;
+#[cfg(feature = "fast-localnet")]
+pub const COUNTDOWN_SECONDS: u64 = 30;
+#[cfg(not(feature = "fast-localnet"))]
 pub const COUNTDOWN_SECONDS: u64 = 5 * 60;
 
 pub const MINIMUM_DRAW_POOL_LAMPORTS: u64 = LAMPORTS_PER_SOL / 10;

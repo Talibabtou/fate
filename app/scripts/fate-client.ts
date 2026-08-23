@@ -10,7 +10,7 @@ import {
 } from "@solana/kit";
 
 export const CONFIG_SIZE = 256;
-export const DRAW_SIZE = 336;
+export const DRAW_SIZE = 344;
 export const PLAYER_POSITION_SIZE = 144;
 export const STAKER_POSITION_SIZE = 112;
 export const WEIGHT_PAGE_SIZE = 344;

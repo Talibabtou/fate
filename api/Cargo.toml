@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+fast-localnet = []
+
 [dependencies]
 bytemuck.workspace = true
 num_enum.workspace = true

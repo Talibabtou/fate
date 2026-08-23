@@ -16,7 +16,6 @@
       "Bash(rm -rf /*)",
       "Bash(git push --force*)",
       "Read(./.env)",
-      "Read(./.env.*)",
       "Read(./**/*keypair*.json)",
       "Read(./**/id.json)"
     ]

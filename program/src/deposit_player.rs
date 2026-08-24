@@ -181,5 +181,15 @@ pub fn process_deposit_player(
     {
         return Err(FateError::InsufficientCustody.into());
     }
+    DepositEvent {
+        kind: EVENT_DEPOSIT,
+        side: EVENT_SIDE_PLAYER,
+        reserved: [0; 6],
+        draw_id,
+        wallet: *player.key,
+        amount_lamports: amount,
+        weight: added_weight.to_le_bytes(),
+    }
+    .log();
     Ok(())
 }

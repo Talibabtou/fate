@@ -1,5 +1,6 @@
 pub mod consts;
 pub mod error;
+pub mod events;
 pub mod instruction;
 pub mod math;
 pub mod sdk;
@@ -10,6 +11,7 @@ pub mod state;
 pub mod prelude {
     pub use crate::consts::*;
     pub use crate::error::*;
+    pub use crate::events::*;
     pub use crate::instruction::*;
     pub use crate::math::*;
     pub use crate::sdk::*;

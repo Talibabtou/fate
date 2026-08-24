@@ -19,8 +19,8 @@
     "lint": "biome lint app",
     "localnet:config": "node --experimental-strip-types app/scripts/check-cluster-config.ts localnet",
     "localnet:e2e": "node --experimental-strip-types app/scripts/localnet-e2e.ts",
-    "program:build:localnet": "NO_DNA=1 cargo build-sbf -p fate-program --features dev-randomness,fast-localnet",
-    "program:build:production": "NO_DNA=1 cargo build-sbf -p fate-program --no-default-features",
+    "program:build:localnet": "NO_DNA=1 cargo build-sbf --features dev-randomness,fast-localnet -- --package fate-program",
+    "program:build:production": "NO_DNA=1 steel build",
     "program:test": "NO_DNA=1 cargo test --workspace --features dev-randomness,fast-localnet",
     "program:test:production": "NO_DNA=1 cargo test --workspace --no-default-features"
   },

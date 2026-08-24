@@ -44,6 +44,7 @@ pub fn process_refund_player(
     }
     let amount = position.refundable_deposit_lamports;
     let weight = position.boosted_weight.get();
+    let draw_id = draw.id;
     if amount == 0 || weight == 0 {
         return Err(FateError::NothingToClaim.into());
     }
@@ -93,5 +94,14 @@ pub fn process_refund_player(
         draw.activation_threshold_lamports = 0;
     }
     draw_info.send(amount, player);
+    RefundEvent {
+        kind: EVENT_REFUND,
+        reserved: [0; 7],
+        draw_id,
+        player: *player.key,
+        amount_lamports: amount,
+        weight: weight.to_le_bytes(),
+    }
+    .log();
     Ok(())
 }

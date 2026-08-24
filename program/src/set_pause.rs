@@ -33,6 +33,14 @@ pub fn process_set_pause(
         return Err(FateError::NotAuthorized.into());
     }
     config.paused = u64::from(paused);
+    PauseChangeEvent {
+        kind: EVENT_PAUSE_CHANGE,
+        paused: u8::from(paused),
+        reserved: [0; 6],
+        authority: *authority_info.key,
+        changed_at: Clock::get()?.unix_timestamp,
+    }
+    .log();
 
     Ok(())
 }

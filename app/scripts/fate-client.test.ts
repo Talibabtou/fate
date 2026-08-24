@@ -62,7 +62,11 @@ test("decodes validated Steel config and draw layouts", () => {
     locksAt: 500n,
     stakerTvlSnapshot: 1_000_000_000n,
     playerTvlLamports: 100_000_000n,
+    winnerDepositLamports: 0n,
+    winnerPayoutLamports: 0n,
     outstandingPlayerClaimLamports: 50_000_000n,
+    protocolFeeLamports: 0n,
+    stakerErosionLamports: 0n,
     openPlayerPositions: 0n,
   });
 
@@ -108,7 +112,11 @@ test("keeper chooses only due permissionless transitions", () => {
     locksAt: 0n,
     stakerTvlSnapshot: 100_000_000_000n,
     playerTvlLamports: 1_000_000_000n,
+    winnerDepositLamports: 0n,
+    winnerPayoutLamports: 0n,
     outstandingPlayerClaimLamports: 0n,
+    protocolFeeLamports: 0n,
+    stakerErosionLamports: 0n,
     openPlayerPositions: 0n,
   };
   assert.equal(dueAction(config, draw, 1_000n), "activate");

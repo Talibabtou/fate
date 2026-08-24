@@ -28,10 +28,19 @@ pub fn process_activate_draw(
         &[DRAW_SEED, &config.current_draw_id.to_le_bytes()],
         program_id,
     )?;
-    activate_draw_state(
-        draw_info.as_account_mut::<Draw>(program_id)?,
-        Clock::get()?.unix_timestamp,
-    )?;
+    let now = Clock::get()?.unix_timestamp;
+    activate_draw_state(draw_info.as_account_mut::<Draw>(program_id)?, now)?;
+    let draw = draw_info.as_account::<Draw>(program_id)?;
+    ActivationEvent {
+        kind: EVENT_ACTIVATION,
+        reserved: [0; 7],
+        draw_id: draw.id,
+        threshold_lamports: draw.activation_threshold_lamports,
+        staker_tvl_snapshot_lamports: draw.staker_tvl_snapshot,
+        activated_at: draw.activated_at,
+        locks_at: draw.locks_at,
+    }
+    .log();
     Ok(())
 }
 

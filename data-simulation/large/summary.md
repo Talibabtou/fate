@@ -12,12 +12,13 @@
 - External yield strategy: none, Staker SOL is inert
 - Player threshold: 1.00% of active Staker TVL
 - Threshold decay: 10% every 10 minutes
-- Player arrivals per funding interval: 1.50
-- Pending Player withdrawal probability per interval: 1.00%
-- Staker withdrawal probability per funding interval: 0.10%
+- Player arrivals per 10 funding minutes: 1.50
+- Pending Player withdrawal probability per 10 minutes: 1.00%
+- Staker withdrawal probability per 10 funding minutes: 0.10%
 - Staker withdrawal-request probability during countdown: 0.10%
 - Activation floor: max(0.10 SOL, 0.10% of Staker TVL)
 - Minimum Player deposit: 0.01 SOL
+- Minimum Staker deposit: 0.10 SOL
 - Countdown: 5 minute(s)
 - Player side win probability: 90.00%
 - Staker side win probability: 10.00%
@@ -51,7 +52,7 @@
 - Average winner profit: 49.2654 SOL
 - Average protocol fee: 2.8212 SOL
 - Cumulative protocol revenue: 2821.1728 SOL
-- Maximum absolute value-conservation error: 0.000000000011 SOL
+- Maximum absolute value-conservation error: 0.000000000001 SOL
 - Staker cumulative PnL: 2495.8949 SOL
 - Player cumulative PnL: -5317.0677 SOL
 - Average quoted Player EV per locked wallet: -0.3979 SOL

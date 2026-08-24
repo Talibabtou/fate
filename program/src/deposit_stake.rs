@@ -147,5 +147,17 @@ pub fn process_deposit_stake(
     {
         return Err(FateError::InsufficientCustody.into());
     }
+    DepositEvent {
+        kind: EVENT_DEPOSIT,
+        side: EVENT_SIDE_STAKER,
+        reserved: [0; 6],
+        draw_id: config_info
+            .as_account::<Config>(program_id)?
+            .current_draw_id,
+        wallet: *staker.key,
+        amount_lamports: amount,
+        weight: u128::from(shares).to_le_bytes(),
+    }
+    .log();
     Ok(())
 }

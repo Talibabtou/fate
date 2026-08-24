@@ -69,7 +69,11 @@ export type DrawAccount = {
   locksAt: bigint;
   stakerTvlSnapshot: bigint;
   playerTvlLamports: bigint;
+  winnerDepositLamports: bigint;
+  winnerPayoutLamports: bigint;
   outstandingPlayerClaimLamports: bigint;
+  protocolFeeLamports: bigint;
+  stakerErosionLamports: bigint;
   openPlayerPositions: bigint;
 };
 
@@ -169,7 +173,11 @@ export function decodeDraw(data: Uint8Array): DrawAccount {
     locksAt: i64(data, 176),
     stakerTvlSnapshot: u64(data, 192),
     playerTvlLamports: u64(data, 216),
+    winnerDepositLamports: u64(data, 264),
+    winnerPayoutLamports: u64(data, 272),
     outstandingPlayerClaimLamports: u64(data, 280),
+    protocolFeeLamports: u64(data, 288),
+    stakerErosionLamports: u64(data, 296),
     openPlayerPositions: u64(data, 328),
   };
 }

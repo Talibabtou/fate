@@ -47,6 +47,7 @@ pub fn process_request_stake_withdrawal(
     if shares > position.active_shares {
         return Err(FateError::WithdrawalExceedsAvailableShares.into());
     }
+    let draw_id = draw.id;
     if pages.len() != WEIGHT_TREE_DEPTH
         || pages[0].as_account::<WeightPage>(program_id)?.total()? != u128::from(vault.total_shares)
     {
@@ -110,5 +111,16 @@ pub fn process_request_stake_withdrawal(
         draw.activation_threshold_lamports = activation_threshold(active_after, elapsed)?;
     }
     vault_info.send(amount, staker);
+    WithdrawalRequestEvent {
+        kind: EVENT_WITHDRAWAL_REQUEST,
+        side: EVENT_SIDE_STAKER,
+        reserved: [0; 6],
+        draw_id,
+        staker: *staker.key,
+        shares,
+        amount_lamports: amount,
+        requested_at: Clock::get()?.unix_timestamp,
+    }
+    .log();
     Ok(())
 }

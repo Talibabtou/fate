@@ -135,7 +135,7 @@ Use per-wallet PDAs and an authenticated weighted tree. Never make activation or
 - [x] Derive every PDA from fixed prefixes and explicit IDs.
 - [x] Calculate account rent and publish it in the technical notes.
 - [x] Bound long-term rent by closing settled Player positions, draw-scoped weight pages, and expired Draw accounts; return rent only to each recorded payer.
-- [x] Benchmark weighted-path transaction compute and packet size. The eight-page SVM path measured 2,811 CU and 704 bytes for a first Player deposit, and 408 CU and 704 bytes for a repeat deposit; refund, withdrawal, and settlement still need measurements under their maximum account paths.
+- [x] Benchmark weighted-path transaction compute and packet size. The eight-page SVM paths measured: deposit `2,811 CU / 704 bytes`, refund `118 / 630`, Staker withdrawal `258 / 671`, repeat Player deposit `408 / 704`, activation `141 / 236`, lock `141 / 236`, Player settlement `525 / 963`, Player claim `258 / 341`, and Staker settlement `525 / 963`.
 - [x] Prove the old 116-Player boundary is gone with a 117-wallet runtime test.
 
 ## Program Instructions
@@ -160,7 +160,7 @@ Use per-wallet PDAs and an authenticated weighted tree. Never make activation or
 - [x] `unpause`: reopen new deposits and activation.
 - [x] Ensure pause never blocks pending Player refunds, Staker exits, locked-draw settlement, or claims.
 - [x] Add permissionless cleanup for settled Player positions, draw weight pages, and expired Draw headers, returning rent to recorded payers.
-- [ ] Emit compact events for deposits, refunds, activation, lock, settlement, claims, and pause changes.
+- [x] Emit compact fixed-binary events for deposits, refunds, activation, lock, settlement, claims, pause changes, and withdrawal requests. Event tags and payload sizes are covered by API tests.
 
 ## Randomness
 
@@ -229,9 +229,9 @@ The keeper is a small script, not a service platform. State transitions remain c
 - [x] Run the keeper through at least twelve consecutive draws to cover both deterministic sides, recent-history rollover, and storage cleanup. The 2026-08-24 localnet batch passed 12 draws, alternated deterministic sides, rolled the recent ring to draw IDs 11 through 2, and converged cleanup.
 - [x] Exercise deposits, refunds, activation, locking, both settlements, Player claims, Staker withdrawals, frozen activated exits, pause-safe settlement, and account closure through local RPC transactions.
 - [x] Stop and restart the keeper during each actionable phase and confirm it resumes safely without privileged state or duplicate transitions. The batch launched a fresh `keeper.ts --once` process for each observed, activation, lock, and settlement transition: 48 keeper restarts, ending in `KEEPER_BATCH_PASS`.
-- [ ] Reconcile every localnet balance delta, fee, claim, liability, and rent refund with the Rust economic model before devnet deployment.
+- [x] Reconcile every localnet balance delta, fee, claim, liability, and rent refund with the Rust economic model before devnet deployment. The 2026-08-24 audit asserted both deterministic settlement sides, exact protocol-fee deltas, vault assets/liabilities, draw claims, direct donations, and post-cleanup custody invariants.
 
-The verified localnet audit on 2026-08-23 deployed program `BRBMYpjn9hCw9h5T7efxm1qAeHFi8JaGuubioTBQ13zU` with placeholder Entropy accounts and ended with `LOCALNET_AUDIT_PASS`. The fast-localnet artifact used a 30-second countdown and covered reinitialization rejection, pause authorization, paused deposits, funding refund/reset, funding withdrawal and threshold recalculation, direct vault donation, activation boundaries, frozen Staker exits, both deterministic settlement sides, double settlement rejection, Player claim and double-claim rejection, position/page cleanup, paused settlement, the last-Staker exit guard, final refund, and final withdrawal. The 2026-08-24 keeper batch ended with `KEEPER_BATCH_PASS` after 12 draws and 48 fresh keeper processes, including recent-history rollover and cleanup convergence. A full fee-by-fee economic reconciliation remains open.
+The verified localnet audit on 2026-08-24 deployed program `BRBMYpjn9hCw9h5T7efxm1qAeHFi8JaGuubioTBQ13zU` with placeholder Entropy accounts and ended with `LOCALNET_AUDIT_PASS`. The fast-localnet artifact used a 30-second countdown and covered reinitialization rejection, pause authorization, paused deposits, funding refund/reset, funding withdrawal and threshold recalculation, direct vault donation, activation boundaries, frozen Staker exits, both deterministic settlement sides, double settlement rejection, Player claim and double-claim rejection, position/page cleanup, paused settlement, the last-Staker exit guard, final refund, final withdrawal, exact settlement accounting, and custody solvency. The 2026-08-24 keeper batch ended with `KEEPER_BATCH_PASS` after 12 draws and 48 fresh keeper processes, including recent-history rollover and cleanup convergence.
 
 ## Next.js Foundation
 

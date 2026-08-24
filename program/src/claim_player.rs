@@ -51,5 +51,15 @@ pub fn process_claim_player(
         .as_account_mut::<PlayerPosition>(program_id)?
         .take_claim()?;
     draw_info.send(amount, player);
+    ClaimEvent {
+        kind: EVENT_CLAIM,
+        side: EVENT_SIDE_PLAYER,
+        reserved: [0; 6],
+        draw_id,
+        wallet: *player.key,
+        amount_lamports: amount,
+        claimed_at: Clock::get()?.unix_timestamp,
+    }
+    .log();
     Ok(())
 }

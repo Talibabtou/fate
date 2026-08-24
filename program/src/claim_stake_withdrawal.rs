@@ -51,5 +51,15 @@ pub fn process_claim_stake_withdrawal(
         .as_account_mut::<StakerPosition>(program_id)?
         .take_claim()?;
     vault_info.send(amount, staker);
+    ClaimEvent {
+        kind: EVENT_CLAIM,
+        side: EVENT_SIDE_STAKER,
+        reserved: [0; 6],
+        draw_id: 0,
+        wallet: *staker.key,
+        amount_lamports: amount,
+        claimed_at: Clock::get()?.unix_timestamp,
+    }
+    .log();
     Ok(())
 }

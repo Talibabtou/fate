@@ -207,7 +207,21 @@ pub fn process_settle_draw_dev(
         vault_info,
     )?;
 
-    let settled_at = draw_info.as_account::<Draw>(program_id)?.settled_at;
+    let settled_draw = draw_info.as_account::<Draw>(program_id)?;
+    SettlementEvent {
+        kind: EVENT_SETTLEMENT,
+        winner_side: settled_draw.winner_side as u8,
+        reserved: [0; 6],
+        draw_id: settled_draw.id,
+        winner: settled_draw.winner,
+        winner_deposit_lamports: settled_draw.winner_deposit_lamports,
+        winner_payout_lamports: settled_draw.winner_payout_lamports,
+        protocol_fee_lamports: settled_draw.protocol_fee_lamports,
+        staker_erosion_lamports: settled_draw.staker_erosion_lamports,
+        settled_at: settled_draw.settled_at,
+    }
+    .log();
+    let settled_at = settled_draw.settled_at;
     let next = next_draw_info.as_account_mut::<Draw>(program_id)?;
     next.id = next_id;
     next.phase = DrawPhase::Funding.into();

@@ -30,6 +30,16 @@ pub fn process_lock_draw(
     validate_lock(draw, config.current_draw_id, now)?;
 
     draw_info.as_account_mut::<Draw>(program_id)?.phase = DrawPhase::Locked.into();
+    let draw = draw_info.as_account::<Draw>(program_id)?;
+    LockEvent {
+        kind: EVENT_LOCK,
+        reserved: [0; 7],
+        draw_id: draw.id,
+        locked_at: now,
+        player_tvl_lamports: draw.player_tvl_lamports,
+        staker_tvl_snapshot_lamports: draw.staker_tvl_snapshot,
+    }
+    .log();
     Ok(())
 }
 

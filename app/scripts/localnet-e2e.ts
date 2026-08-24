@@ -9,6 +9,7 @@ import {
 import { solanaRpc } from "@solana/kit-plugin-rpc";
 import { identityFromFile, payerFromFile } from "@solana/kit-plugin-signer";
 import {
+  type DrawAccount,
   decodeConfig,
   decodeDraw,
   decodePlayerPosition,
@@ -141,6 +142,74 @@ function decodeVault(data: Uint8Array) {
 async function readVault(client: FateClient) {
   const { vault } = await fateAddresses(PROGRAM_ADDRESS, 0n);
   return decodeVault(await accountData(client, vault));
+}
+
+function playerSettlementExpected(stakerTvl: bigint, playerTvl: bigint, winnerDeposit: bigint) {
+  const losingPlayer = playerTvl - winnerDeposit;
+  const stakerCap = (stakerTvl * 700n) / 1_000_000n;
+  const playerCap = (playerTvl * 70_000n) / 1_000_000n;
+  const erosion = stakerCap < playerCap ? stakerCap : playerCap;
+  const grossProfit = losingPlayer + erosion;
+  const winnerProfit = (grossProfit * 950_000n) / 1_000_000n;
+  return {
+    erosion,
+    fee: grossProfit - winnerProfit,
+    payout: winnerDeposit + winnerProfit,
+  };
+}
+
+function stakerSettlementExpected(playerTvl: bigint) {
+  const jackpot = (playerTvl * 300_000n) / 1_000_000n;
+  const proRata = (playerTvl * 650_000n) / 1_000_000n;
+  return { jackpot, proRata, fee: playerTvl - jackpot - proRata };
+}
+
+async function assertSettlementAccounting(
+  client: FateClient,
+  drawId: bigint,
+  beforeDraw: DrawAccount,
+  beforeVault: ReturnType<typeof decodeVault>,
+  treasuryBefore: bigint,
+  winnerDeposit: bigint,
+  side: "Player" | "Staker",
+) {
+  const afterDraw = (await readDraw(client, drawId)).decoded;
+  const afterVault = await readVault(client);
+  const config = await readConfig(client);
+  const treasuryAfter = await balance(client, config.feeTreasury);
+  if (side === "Player") {
+    const expected = playerSettlementExpected(
+      beforeVault.activeAssets,
+      beforeDraw.playerTvlLamports,
+      winnerDeposit,
+    );
+    if (
+      afterDraw.winnerDepositLamports !== winnerDeposit ||
+      afterDraw.winnerPayoutLamports !== expected.payout ||
+      afterDraw.protocolFeeLamports !== expected.fee ||
+      afterDraw.stakerErosionLamports !== expected.erosion ||
+      afterVault.activeAssets !== beforeVault.activeAssets - expected.erosion ||
+      treasuryAfter - treasuryBefore !== expected.fee
+    ) {
+      throw new Error(`Player settlement accounting mismatch for draw ${drawId}`);
+    }
+  } else {
+    const expected = stakerSettlementExpected(beforeDraw.playerTvlLamports);
+    const jackpotShares =
+      (expected.jackpot * beforeVault.totalShares) / (beforeVault.activeAssets + expected.proRata);
+    const expectedActive =
+      beforeVault.activeAssets + expected.proRata + (jackpotShares === 0n ? 0n : expected.jackpot);
+    const expectedLiability =
+      beforeVault.withdrawalLiability + (jackpotShares === 0n ? expected.jackpot : 0n);
+    if (
+      afterDraw.protocolFeeLamports !== expected.fee ||
+      afterVault.activeAssets !== expectedActive ||
+      afterVault.withdrawalLiability !== expectedLiability ||
+      treasuryAfter - treasuryBefore !== expected.fee
+    ) {
+      throw new Error(`Staker settlement accounting mismatch for draw ${drawId}`);
+    }
+  }
 }
 
 async function assertCustody(client: FateClient, drawId: bigint) {
@@ -687,6 +756,24 @@ async function run() {
   );
   await waitForLock(payerClient, 0n);
   await send(payerClient, "lock draw 0", await phaseInstruction(0n, 11));
+  const draw0Before = (await readDraw(payerClient, 0n)).decoded;
+  const vault0Before = await readVault(payerClient);
+  const treasury0Before = await balance(payerClient, (await readConfig(payerClient)).feeTreasury);
+  const player0WinnerPosition = decodePlayerPosition(
+    await accountData(
+      payerClient,
+      (
+        await participantAddresses(
+          PROGRAM_ADDRESS,
+          0n,
+          settlementParticipants0.player,
+          settlementParticipants0.playerIndex,
+          staker,
+          0n,
+        )
+      ).playerPosition,
+    ),
+  );
   const staleSettlement0 = await keeperInstruction(
     "settle",
     PROGRAM_ADDRESS,
@@ -695,6 +782,15 @@ async function run() {
     settlementParticipants0,
   );
   await settle(payerClient, 0n, payer, settlementParticipants0);
+  await assertSettlementAccounting(
+    payerClient,
+    0n,
+    draw0Before,
+    vault0Before,
+    treasury0Before,
+    player0WinnerPosition.refundableLamports + player0WinnerPosition.committedLamports,
+    "Player",
+  );
   await expectFailure(payerClient, "double settlement draw 0", staleSettlement0);
   draw = await readDraw(payerClient, 0n);
   if (draw.decoded.phase !== 4 || drawWinnerSide(draw.data) !== "Player")
@@ -754,6 +850,9 @@ async function run() {
   );
   await waitForLock(payerClient, 1n);
   await send(payerClient, "lock paused draw 1", await phaseInstruction(1n, 11));
+  const draw1Before = (await readDraw(payerClient, 1n)).decoded;
+  const vault1Before = await readVault(payerClient);
+  const treasury1Before = await balance(payerClient, (await readConfig(payerClient)).feeTreasury);
   const playerParticipants1 = [
     { authority: player, leafIndex: 0n },
     { authority: payer, leafIndex: 1n },
@@ -788,6 +887,15 @@ async function run() {
     ),
   );
   await settle(payerClient, 1n, payer, settlementParticipants1);
+  await assertSettlementAccounting(
+    payerClient,
+    1n,
+    draw1Before,
+    vault1Before,
+    treasury1Before,
+    0n,
+    "Staker",
+  );
   draw = await readDraw(payerClient, 1n);
   if (draw.decoded.phase !== 4 || drawWinnerSide(draw.data) !== "Staker")
     throw new Error("draw 1 Staker settlement failed");

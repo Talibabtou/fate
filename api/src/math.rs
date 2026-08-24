@@ -339,8 +339,7 @@ mod tests {
             let winner_deposit = next_sample(&mut state) % (player_tvl + 1);
             let player = player_settlement(staker_tvl, player_tvl, winner_deposit).unwrap();
             assert_eq!(
-                staker_tvl
-                    - player.staker_erosion_lamports
+                staker_tvl - player.staker_erosion_lamports
                     + player.winner_payout_lamports
                     + player.protocol_fee_lamports,
                 staker_tvl + player_tvl

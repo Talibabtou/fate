@@ -113,7 +113,7 @@ fate/
 
 - [x] Initialize a root Cargo workspace containing `api` and `program`.
 - [x] Follow the layout and account-validation patterns in `repos/steel` and `repos/steel-book`.
-- [ ] Scaffold `app` with Next.js, TypeScript, Tailwind CSS, pnpm, and the App Router.
+- [x] Scaffold `app` with Next.js, TypeScript, Tailwind CSS, pnpm, and the App Router. The first page is a read-only Kit-backed Fate state surface; wallet connection and transaction actions remain the next frontend gate.
 - [x] Add Biome with format, lint, and import-order checks for the keeper and app TypeScript.
 - [x] Add root commands for program tests, production-feature tests, SBF builds, app checks/tests, localnet and devnet configuration validation, localnet e2e, and the keeper batch. Devnet deployment remains a guarded manual step.
 - [x] Document required tool versions and environment variables.

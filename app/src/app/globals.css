@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+:root {
+  --ink: #f4f2ed;
+  --muted: #a7aaa5;
+  --dim: #6d746f;
+  --line: rgba(236, 241, 232, 0.12);
+  --panel: rgba(19, 27, 25, 0.82);
+  --panel-strong: #17221f;
+  --accent: #d6ff74;
+  --accent-soft: rgba(214, 255, 116, 0.14);
+  --warm: #e9b98c;
+  --bg: #0b100f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bg);
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+  background:
+    radial-gradient(circle at 75% -10%, rgba(106, 139, 91, 0.16), transparent 30rem), var(--bg);
+  color: var(--ink);
+  font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: var(--accent);
+  color: #142014;
+}
+
+.display-font {
+  font-family: Georgia, "Times New Roman", serif;
+  letter-spacing: -0.045em;
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.hairline {
+  border-color: var(--line);
+}
+
+.panel {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 20px 80px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(18px);
+}
+
+.mono {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .live-dot {
+    animation: pulse 2.2s ease-in-out infinite;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(214, 255, 116, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(214, 255, 116, 0);
+  }
+}

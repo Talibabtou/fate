@@ -52,6 +52,8 @@ test("decodes validated Steel config and draw layouts", () => {
   setI64(drawData, 160, 100n);
   setI64(drawData, 176, 500n);
   setU64(drawData, 192, 1_000_000_000n);
+  setU64(drawData, 200, 10_000_000n);
+  setU64(drawData, 208, 10_000_000n);
   setU64(drawData, 216, 100_000_000n);
   setU64(drawData, 280, 50_000_000n);
   assert.deepEqual(decodeDraw(drawData), {
@@ -61,6 +63,8 @@ test("decodes validated Steel config and draw layouts", () => {
     firstPlayerAt: 100n,
     locksAt: 500n,
     stakerTvlSnapshot: 1_000_000_000n,
+    initialThresholdLamports: 10_000_000n,
+    activationThresholdLamports: 10_000_000n,
     playerTvlLamports: 100_000_000n,
     winnerDepositLamports: 0n,
     winnerPayoutLamports: 0n,
@@ -111,6 +115,8 @@ test("keeper chooses only due permissionless transitions", () => {
     firstPlayerAt: 1_000n,
     locksAt: 0n,
     stakerTvlSnapshot: 100_000_000_000n,
+    initialThresholdLamports: 1_000_000_000n,
+    activationThresholdLamports: 1_000_000_000n,
     playerTvlLamports: 1_000_000_000n,
     winnerDepositLamports: 0n,
     winnerPayoutLamports: 0n,

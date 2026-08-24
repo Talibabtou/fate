@@ -68,6 +68,8 @@ export type DrawAccount = {
   firstPlayerAt: bigint;
   locksAt: bigint;
   stakerTvlSnapshot: bigint;
+  initialThresholdLamports: bigint;
+  activationThresholdLamports: bigint;
   playerTvlLamports: bigint;
   winnerDepositLamports: bigint;
   winnerPayoutLamports: bigint;
@@ -172,6 +174,8 @@ export function decodeDraw(data: Uint8Array): DrawAccount {
     firstPlayerAt: i64(data, 160),
     locksAt: i64(data, 176),
     stakerTvlSnapshot: u64(data, 192),
+    initialThresholdLamports: u64(data, 200),
+    activationThresholdLamports: u64(data, 208),
     playerTvlLamports: u64(data, 216),
     winnerDepositLamports: u64(data, 264),
     winnerPayoutLamports: u64(data, 272),

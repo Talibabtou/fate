@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { AccountRole, type Address, address, createClient, type Instruction } from "@solana/kit";
 import { solanaRpc } from "@solana/kit-plugin-rpc";
@@ -10,6 +12,9 @@ import {
   fateAddresses,
   participantAddresses,
 } from "./fate-client.ts";
+
+const envPath = resolve(import.meta.dirname, "../../.env.local");
+if (existsSync(envPath)) process.loadEnvFile(envPath);
 
 const RPC_URL = process.env.FATE_LOCALNET_RPC_URL?.trim() || "http://127.0.0.1:8899";
 const PROGRAM_ADDRESS = address(required("FATE_PROGRAM_ID"));

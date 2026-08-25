@@ -29,6 +29,12 @@ export function browserProgramAddress() {
   return value ? address(value) : null;
 }
 
+export async function readSolBalance(walletAddress: Address) {
+  const rpc = createSolanaRpc(browserRpcUrl());
+  const response = await rpc.getBalance(walletAddress, { commitment: "confirmed" }).send();
+  return response.value;
+}
+
 export async function readFateSnapshot(): Promise<FateSnapshot> {
   const programAddress = browserProgramAddress();
   if (!programAddress) throw new Error("NEXT_PUBLIC_FATE_PROGRAM_ID is not configured");

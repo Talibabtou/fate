@@ -219,4 +219,62 @@ mod tests {
             Err(ProgramError::InvalidArgument)
         );
     }
+
+    #[cfg(not(feature = "dev-randomness"))]
+    #[test]
+    fn production_entropy_gate_rejects_non_program_and_substituted_variable_accounts() {
+        let entropy_program_key = Pubkey::new_unique();
+        let entropy_variable_key = Pubkey::new_unique();
+        let wrong_owner = Pubkey::new_unique();
+        let mut program_lamports = 1;
+        let mut variable_lamports = 1;
+        let mut program_data = [];
+        let mut variable_data = [1];
+
+        let non_program = AccountInfo::new(
+            &entropy_program_key,
+            false,
+            false,
+            &mut program_lamports,
+            &mut program_data,
+            &solana_program::bpf_loader::ID,
+            false,
+            0,
+        );
+        let variable = AccountInfo::new(
+            &entropy_variable_key,
+            false,
+            false,
+            &mut variable_lamports,
+            &mut variable_data,
+            &entropy_program_key,
+            false,
+            0,
+        );
+        assert!(validate_entropy_accounts(&non_program, &variable).is_err());
+
+        let mut executable_program_lamports = 1;
+        let mut executable_program_data = [];
+        let executable_program = AccountInfo::new(
+            &entropy_program_key,
+            false,
+            false,
+            &mut executable_program_lamports,
+            &mut executable_program_data,
+            &solana_program::bpf_loader::ID,
+            true,
+            0,
+        );
+        let substituted_variable = AccountInfo::new(
+            &entropy_variable_key,
+            false,
+            false,
+            &mut variable_lamports,
+            &mut variable_data,
+            &wrong_owner,
+            false,
+            0,
+        );
+        assert!(validate_entropy_accounts(&executable_program, &substituted_variable).is_err());
+    }
 }

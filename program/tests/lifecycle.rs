@@ -65,6 +65,90 @@ async fn start() -> (ProgramTestContext, Pubkey, Keypair, Pubkey) {
     (context, program_id, authority, fee_treasury)
 }
 
+async fn assert_rejected(
+    context: &mut ProgramTestContext,
+    instruction: Instruction,
+    extra: &[&Keypair],
+) {
+    assert!(
+        send(context, instruction, extra).await.is_err(),
+        "invalid instruction unexpectedly succeeded"
+    );
+}
+
+async fn initialize_with_prefunded_config(
+    config_data: Vec<u8>,
+    config_owner: Pubkey,
+) -> (
+    ProgramTestContext,
+    Pubkey,
+    Result<(), solana_program_test::BanksClientError>,
+) {
+    let program_id = Pubkey::new_unique();
+    let entropy_program = Pubkey::new_unique();
+    let entropy_variable = Pubkey::new_unique();
+    let authority = Keypair::new();
+    let fee_treasury = Pubkey::new_unique();
+    let config = config_pda(&program_id).0;
+    let mut test = ProgramTest::new("fate", program_id, processor!(fate::process_instruction));
+    test.add_account(
+        entropy_program,
+        Account {
+            lamports: SOL,
+            data: vec![],
+            owner: solana_program::bpf_loader::ID,
+            executable: true,
+            rent_epoch: 0,
+        },
+    );
+    test.add_account(
+        entropy_variable,
+        Account {
+            lamports: SOL,
+            data: vec![0],
+            owner: entropy_program,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    test.add_account(
+        fee_treasury,
+        Account {
+            lamports: SOL,
+            data: vec![],
+            owner: solana_program::system_program::ID,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    test.add_account(
+        config,
+        Account {
+            lamports: SOL,
+            data: config_data,
+            owner: config_owner,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    let mut context = test.start_with_context().await;
+    let payer = context.payer.pubkey();
+    let result = send(
+        &mut context,
+        initialize(
+            program_id,
+            payer,
+            authority.pubkey(),
+            fee_treasury,
+            entropy_program,
+            entropy_variable,
+        ),
+        &[&authority],
+    )
+    .await;
+    (context, program_id, result)
+}
+
 #[tokio::test]
 async fn per_wallet_positions_exceed_the_old_player_registry_cap() {
     let (mut context, program_id, _, _) = start().await;
@@ -118,6 +202,303 @@ async fn per_wallet_positions_exceed_the_old_player_registry_cap() {
         draw.player_tvl_lamports,
         player_count * MINIMUM_PLAYER_DEPOSIT_LAMPORTS
     );
+}
+
+#[cfg(feature = "dev-randomness")]
+#[tokio::test]
+async fn timed_transitions_reject_wrong_phases_and_replays() {
+    let (mut context, program_id, _, fee_treasury) = start().await;
+    let payer = context.payer.pubkey();
+    let staker = Keypair::new();
+    let player = Keypair::new();
+    fund(&mut context, &staker.pubkey(), 3 * SOL).await;
+    fund(&mut context, &player.pubkey(), SOL).await;
+
+    assert_rejected(&mut context, activate_draw(program_id, 0), &[]).await;
+    send(
+        &mut context,
+        deposit_stake(program_id, staker.pubkey(), 0, 0, SOL),
+        &[&staker],
+    )
+    .await
+    .unwrap();
+    send(
+        &mut context,
+        deposit_player(
+            program_id,
+            player.pubkey(),
+            0,
+            0,
+            MINIMUM_DRAW_POOL_LAMPORTS,
+        ),
+        &[&player],
+    )
+    .await
+    .unwrap();
+
+    let mut too_early_lock = lock_draw(program_id, 0);
+    assert_rejected(&mut context, too_early_lock.clone(), &[]).await;
+    send(&mut context, activate_draw(program_id, 0), &[])
+        .await
+        .unwrap();
+    assert_rejected(
+        &mut context,
+        refund_player(program_id, player.pubkey(), 0, 0),
+        &[&player],
+    )
+    .await;
+    assert_rejected(
+        &mut context,
+        request_stake_withdrawal(program_id, staker.pubkey(), 0, 0, SOL / 2),
+        &[&staker],
+    )
+    .await;
+
+    // Deposits remain open during the countdown, then close at the lock boundary.
+    send(
+        &mut context,
+        deposit_player(
+            program_id,
+            player.pubkey(),
+            0,
+            0,
+            MINIMUM_PLAYER_DEPOSIT_LAMPORTS,
+        ),
+        &[&player],
+    )
+    .await
+    .unwrap();
+    let draw = read_account::<Draw>(
+        &context
+            .banks_client
+            .get_account(draw_pda(&program_id, 0).0)
+            .await
+            .unwrap()
+            .unwrap(),
+    )
+    .to_owned();
+    too_early_lock = lock_draw(program_id, 0);
+    assert_rejected(&mut context, too_early_lock, &[]).await;
+    context.warp_to_slot(2).unwrap();
+    context.set_sysvar(&Clock {
+        unix_timestamp: draw.locks_at,
+        ..Clock::default()
+    });
+    send(&mut context, lock_draw(program_id, 0), &[])
+        .await
+        .unwrap();
+
+    assert_rejected(
+        &mut context,
+        deposit_player(
+            program_id,
+            player.pubkey(),
+            0,
+            0,
+            MINIMUM_PLAYER_DEPOSIT_LAMPORTS,
+        ),
+        &[&player],
+    )
+    .await;
+    assert_rejected(
+        &mut context,
+        refund_player(program_id, player.pubkey(), 0, 0),
+        &[&player],
+    )
+    .await;
+    assert_rejected(&mut context, activate_draw(program_id, 0), &[]).await;
+    assert_rejected(&mut context, lock_draw(program_id, 0), &[]).await;
+
+    send(
+        &mut context,
+        settle_draw_dev(
+            program_id,
+            payer,
+            fee_treasury,
+            0,
+            player.pubkey(),
+            0,
+            staker.pubkey(),
+            0,
+        ),
+        &[],
+    )
+    .await
+    .unwrap();
+    assert_rejected(
+        &mut context,
+        settle_draw_dev(
+            program_id,
+            payer,
+            fee_treasury,
+            0,
+            player.pubkey(),
+            0,
+            staker.pubkey(),
+            0,
+        ),
+        &[],
+    )
+    .await;
+    send(
+        &mut context,
+        claim_player(program_id, player.pubkey(), 0),
+        &[&player],
+    )
+    .await
+    .unwrap();
+    assert_rejected(
+        &mut context,
+        claim_player(program_id, player.pubkey(), 0),
+        &[&player],
+    )
+    .await;
+    assert_rejected(
+        &mut context,
+        claim_stake_withdrawal(program_id, staker.pubkey()),
+        &[&staker],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn account_contract_matrix_rejects_substitution_signer_and_mutability() {
+    let (mut context, program_id, authority, _) = start().await;
+    let payer = context.payer.pubkey();
+    let staker = Keypair::new();
+    let player = Keypair::new();
+    fund(&mut context, &staker.pubkey(), 3 * SOL).await;
+    fund(&mut context, &player.pubkey(), SOL).await;
+
+    let mut wrong_config = deposit_stake(program_id, staker.pubkey(), 0, 0, SOL);
+    wrong_config.accounts[1].pubkey = Pubkey::new_unique();
+    assert_rejected(&mut context, wrong_config, &[&staker]).await;
+
+    let mut writable_config = deposit_stake(program_id, staker.pubkey(), 0, 0, SOL);
+    writable_config.accounts[1].is_writable = true;
+    assert_rejected(&mut context, writable_config, &[&staker]).await;
+
+    let mut missing_staker_signature = deposit_stake(program_id, staker.pubkey(), 0, 0, SOL);
+    missing_staker_signature.accounts[0].is_signer = false;
+    assert_rejected(&mut context, missing_staker_signature, &[]).await;
+
+    let mut wrong_weight_page = deposit_stake(program_id, staker.pubkey(), 0, 0, SOL);
+    wrong_weight_page.accounts[6].pubkey = Pubkey::new_unique();
+    assert_rejected(&mut context, wrong_weight_page, &[&staker]).await;
+
+    send(
+        &mut context,
+        deposit_stake(program_id, staker.pubkey(), 0, 0, SOL),
+        &[&staker],
+    )
+    .await
+    .unwrap();
+
+    let mut wrong_player_position = deposit_player(
+        program_id,
+        player.pubkey(),
+        0,
+        0,
+        MINIMUM_DRAW_POOL_LAMPORTS,
+    );
+    wrong_player_position.accounts[3].pubkey = Pubkey::new_unique();
+    assert_rejected(&mut context, wrong_player_position, &[&player]).await;
+
+    let mut wrong_system_program = deposit_player(
+        program_id,
+        player.pubkey(),
+        0,
+        0,
+        MINIMUM_DRAW_POOL_LAMPORTS,
+    );
+    wrong_system_program.accounts[5].pubkey = Pubkey::new_unique();
+    assert_rejected(&mut context, wrong_system_program, &[&player]).await;
+
+    send(
+        &mut context,
+        deposit_player(
+            program_id,
+            player.pubkey(),
+            0,
+            0,
+            MINIMUM_DRAW_POOL_LAMPORTS,
+        ),
+        &[&player],
+    )
+    .await
+    .unwrap();
+
+    let mut wrong_refund_page = refund_player(program_id, player.pubkey(), 0, 0);
+    wrong_refund_page.accounts[4].pubkey = Pubkey::new_unique();
+    assert_rejected(&mut context, wrong_refund_page, &[&player]).await;
+
+    let mut wrong_withdrawal_page =
+        request_stake_withdrawal(program_id, staker.pubkey(), 0, 0, SOL / 2);
+    wrong_withdrawal_page.accounts[5].pubkey = Pubkey::new_unique();
+    assert_rejected(&mut context, wrong_withdrawal_page, &[&staker]).await;
+
+    let unauthorized = Keypair::new();
+    let mut unauthorized_pause = pause(program_id, unauthorized.pubkey());
+    fund(&mut context, &unauthorized.pubkey(), SOL / 10).await;
+    assert_rejected(&mut context, unauthorized_pause.clone(), &[&unauthorized]).await;
+    unauthorized_pause.accounts[0].is_signer = false;
+    assert_rejected(&mut context, unauthorized_pause, &[]).await;
+
+    let mut wrong_activation_draw = activate_draw(program_id, 0);
+    wrong_activation_draw.accounts[1].pubkey = Pubkey::new_unique();
+    assert_rejected(&mut context, wrong_activation_draw, &[]).await;
+
+    // Reinitialization and duplicate initialization targets are both rejected before state mutation.
+    assert_rejected(
+        &mut context,
+        initialize(
+            program_id,
+            payer,
+            authority.pubkey(),
+            Pubkey::new_unique(),
+            Pubkey::new_unique(),
+            Pubkey::new_unique(),
+        ),
+        &[&authority],
+    )
+    .await;
+    let config = config_pda(&program_id).0;
+    assert_rejected(
+        &mut context,
+        initialize(
+            program_id,
+            payer,
+            authority.pubkey(),
+            config,
+            Pubkey::new_unique(),
+            Pubkey::new_unique(),
+        ),
+        &[&authority],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn initialization_handles_prefunded_pdas_and_rejects_bad_targets() {
+    let (context, program_id, result) =
+        initialize_with_prefunded_config(vec![], solana_program::system_program::ID).await;
+    result.unwrap();
+    let config_account = context
+        .banks_client
+        .get_account(config_pda(&program_id).0)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(config_account.owner, program_id);
+    assert_eq!(config_account.data.len(), Config::SIZE);
+
+    let (_, _, wrong_owner_result) =
+        initialize_with_prefunded_config(vec![], Pubkey::new_unique()).await;
+    assert!(wrong_owner_result.is_err());
+
+    let (_, _, wrong_length_result) =
+        initialize_with_prefunded_config(vec![0], solana_program::system_program::ID).await;
+    assert!(wrong_length_result.is_err());
 }
 
 #[cfg(feature = "dev-randomness")]
@@ -617,7 +998,7 @@ async fn signed_transaction(
     instruction: Instruction,
     extra: &[&Keypair],
 ) -> Transaction {
-    let blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
+    let blockhash = context.get_new_latest_blockhash().await.unwrap();
     let mut signers = vec![&context.payer];
     signers.extend_from_slice(extra);
     Transaction::new_signed_with_payer(
@@ -670,7 +1051,7 @@ async fn send(
     instruction: Instruction,
     extra: &[&Keypair],
 ) -> Result<(), solana_program_test::BanksClientError> {
-    let blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
+    let blockhash = context.get_new_latest_blockhash().await.unwrap();
     let mut signers = vec![&context.payer];
     signers.extend_from_slice(extra);
     let transaction = Transaction::new_signed_with_payer(

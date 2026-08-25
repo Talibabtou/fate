@@ -15,6 +15,7 @@ import {
   dueAction,
   PLAYER_POSITION_DISCRIMINATOR,
   PLAYER_POSITION_SIZE,
+  selectWeightedIndex,
 } from "./fate-client.ts";
 
 function setU64(data: Uint8Array, offset: number, value: bigint) {
@@ -55,6 +56,7 @@ test("decodes validated Steel config and draw layouts", () => {
   setU64(drawData, 200, 10_000_000n);
   setU64(drawData, 208, 10_000_000n);
   setU64(drawData, 216, 100_000_000n);
+  setU64(drawData, 224, 100_000_000n);
   setU64(drawData, 280, 50_000_000n);
   assert.deepEqual(decodeDraw(drawData), {
     rentPayer: treasury,
@@ -66,6 +68,7 @@ test("decodes validated Steel config and draw layouts", () => {
     initialThresholdLamports: 10_000_000n,
     activationThresholdLamports: 10_000_000n,
     playerTvlLamports: 100_000_000n,
+    totalPlayerWeight: 100_000_000n,
     winnerDepositLamports: 0n,
     winnerPayoutLamports: 0n,
     outstandingPlayerClaimLamports: 50_000_000n,
@@ -118,6 +121,7 @@ test("keeper chooses only due permissionless transitions", () => {
     initialThresholdLamports: 1_000_000_000n,
     activationThresholdLamports: 1_000_000_000n,
     playerTvlLamports: 1_000_000_000n,
+    totalPlayerWeight: 1_000_000_000n,
     winnerDepositLamports: 0n,
     winnerPayoutLamports: 0n,
     outstandingPlayerClaimLamports: 0n,
@@ -157,4 +161,23 @@ test("activation threshold matches the on-chain floor and decay", () => {
   assert.equal(activationThreshold(100_000_000_000n, 0n), 1_000_000_000n);
   assert.equal(activationThreshold(100_000_000_000n, 600n), 900_000_000n);
   assert.equal(activationThreshold(1_000_000_000n, 0n), 100_000_000n);
+});
+
+test("keeper weighted-path selection returns the authenticated leaf", () => {
+  const tree = address("11111111111111111111111111111111");
+  const index = 0x1234_5678n;
+  const pages = Array.from({ length: 8 }, (_, level) => {
+    const branch = Number((index >> BigInt((7 - level) * 4)) & 0xfn);
+    const weights = Array.from({ length: 16 }, () => 0n);
+    weights[branch] = 7n;
+    const remainingBits = BigInt((8 - level) * 4);
+    return {
+      tree,
+      rentPayer: tree,
+      level: BigInt(level),
+      prefix: level === 0 ? 0n : (index >> remainingBits) << remainingBits,
+      weights,
+    };
+  });
+  assert.equal(selectWeightedIndex(pages, tree, 6n), index);
 });

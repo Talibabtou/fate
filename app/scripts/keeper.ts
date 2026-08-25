@@ -1,6 +1,13 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { type Address, address, createClient, type Instruction } from "@solana/kit";
+import {
+  type Address,
+  address,
+  type Base58EncodedBytes,
+  createClient,
+  getBase58Decoder,
+  type Instruction,
+} from "@solana/kit";
 import { solanaRpc } from "@solana/kit-plugin-rpc";
 import { payerFromFile } from "@solana/kit-plugin-signer";
 import {
@@ -12,8 +19,9 @@ import {
   decodeDraw,
   decodePlayerPosition,
   decodeStakerPosition,
+  decodeStakerVault,
   decodeWeightPage,
-  devSettlementParticipants,
+  devSettlementSelection,
   dueAction,
   fateAddresses,
   type KeeperAction,
@@ -21,7 +29,10 @@ import {
   PLAYER_POSITION_SIZE,
   RECENT_DRAW_CAPACITY,
   STAKER_POSITION_SIZE,
+  selectWeightBranch,
+  selectWeightedIndex,
   WEIGHT_PAGE_SIZE,
+  weightPageAddress,
 } from "./fate-client.ts";
 
 const DEVNET_GENESIS_HASH = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
@@ -219,7 +230,7 @@ async function main() {
         if (action) {
           const participants =
             action === "settle"
-              ? await findSettlementParticipants(client, config.programAddress, draw.id)
+              ? await findSettlementParticipants(client, config.programAddress, draw.id, draw)
               : undefined;
           instruction = await keeperInstruction(
             action,
@@ -400,38 +411,136 @@ async function findSettlementParticipants(
   client: KeeperClient,
   programAddress: Address,
   drawId: bigint,
+  draw: ReturnType<typeof decodeDraw>,
 ) {
-  const [playerAccounts, stakerAccounts] = await Promise.all([
-    client.rpc
-      .getProgramAccounts(programAddress, {
-        commitment: "confirmed",
-        encoding: "base64",
-        filters: [{ dataSize: BigInt(PLAYER_POSITION_SIZE) }],
-      })
-      .send(),
-    client.rpc
-      .getProgramAccounts(programAddress, {
-        commitment: "confirmed",
-        encoding: "base64",
-        filters: [{ dataSize: BigInt(STAKER_POSITION_SIZE) }],
-      })
-      .send(),
+  const { draw: drawTree, vault: stakerTree } = await fateAddresses(programAddress, drawId);
+  const vaultResponse = await client.rpc
+    .getAccountInfo(stakerTree, { commitment: "confirmed", encoding: "base64" })
+    .send();
+  if (!vaultResponse.value || vaultResponse.value.owner !== programAddress) {
+    throw new Error("Fate vault has an unexpected owner");
+  }
+  const vault = decodeStakerVault(decodeRpcData(vaultResponse.value.data));
+  const selection = devSettlementSelection(drawId, draw.totalPlayerWeight, vault.totalShares);
+  const [playerIndex, stakerIndex] = await Promise.all([
+    selectLeaf(
+      client,
+      programAddress,
+      drawTree,
+      selection.side === "player" ? selection.target : 0n,
+    ),
+    selectLeaf(
+      client,
+      programAddress,
+      stakerTree,
+      selection.side === "staker" ? selection.target : 0n,
+    ),
   ]);
-  const players = playerAccounts.flatMap((account) => {
-    try {
-      return [decodePlayerPosition(decodeRpcData(account.account.data))];
-    } catch {
-      return [];
+  const [player, staker] = await Promise.all([
+    findPositionByLeaf(client, programAddress, "player", drawId, playerIndex),
+    findPositionByLeaf(client, programAddress, "staker", drawId, stakerIndex),
+  ]);
+  return {
+    player: player.authority,
+    playerIndex: player.leafIndex,
+    staker: staker.authority,
+    stakerIndex: staker.leafIndex,
+  };
+}
+
+async function selectLeaf(
+  client: KeeperClient,
+  programAddress: Address,
+  tree: Address,
+  target: bigint,
+) {
+  const originalTarget = target;
+  let index = 0n;
+  const pages: ReturnType<typeof decodeWeightPage>[] = [];
+  for (let level = 0; level < 8; level += 1) {
+    const remainingBits = BigInt((8 - level) * 4);
+    const prefix = level === 0 ? 0n : (index >> remainingBits) << remainingBits;
+    const pageAddress = await weightPageAddress(programAddress, tree, level, prefix);
+    const response = await client.rpc
+      .getAccountInfo(pageAddress, { commitment: "confirmed", encoding: "base64" })
+      .send();
+    if (!response.value || response.value.owner !== programAddress) {
+      throw new Error(`weight page is missing or has an unexpected owner: ${pageAddress}`);
     }
-  });
-  const stakers = stakerAccounts.flatMap((account) => {
-    try {
-      return [decodeStakerPosition(decodeRpcData(account.account.data))];
-    } catch {
-      return [];
+    const page = decodeWeightPage(decodeRpcData(response.value.data));
+    pages.push(page);
+    const selected = selectWeightBranch(page.weights, target);
+    index |= BigInt(selected.branch) << BigInt((7 - level) * 4);
+    target = selected.remainder;
+  }
+  const selectedIndex = selectWeightedIndex(pages, tree, originalTarget);
+  if (selectedIndex !== index) throw new Error("weight path selection was not stable");
+  return index;
+}
+
+async function findPositionByLeaf(
+  client: KeeperClient,
+  programAddress: Address,
+  side: "player" | "staker",
+  drawId: bigint,
+  leafIndex: bigint,
+) {
+  const leafBytes = u64Bytes(leafIndex);
+  const filters = [
+    { dataSize: BigInt(side === "player" ? PLAYER_POSITION_SIZE : STAKER_POSITION_SIZE) },
+    ...(side === "player"
+      ? [
+          {
+            memcmp: {
+              offset: 88n,
+              bytes: getBase58Decoder().decode(u64Bytes(drawId)) as Base58EncodedBytes,
+              encoding: "base58" as const,
+            },
+          },
+        ]
+      : []),
+    {
+      memcmp: {
+        offset: BigInt(side === "player" ? 128 : 96),
+        bytes: getBase58Decoder().decode(leafBytes) as Base58EncodedBytes,
+        encoding: "base58" as const,
+      },
+    },
+  ];
+  const accounts = await client.rpc
+    .getProgramAccounts(programAddress, {
+      commitment: "confirmed",
+      encoding: "base64",
+      filters,
+    })
+    .send();
+  if (accounts.length !== 1) {
+    throw new Error(
+      `expected one ${side} position at leaf ${leafIndex}, received ${accounts.length}`,
+    );
+  }
+  const account = accounts[0];
+  if (account.account.owner !== programAddress) {
+    throw new Error(`${side} position has an unexpected owner`);
+  }
+  if (side === "player") {
+    const position = decodePlayerPosition(decodeRpcData(account.account.data));
+    if (position.leafIndex !== leafIndex || position.drawId !== drawId || position.weight === 0n) {
+      throw new Error("Player position failed leaf validation");
     }
-  });
-  return devSettlementParticipants(drawId, players, stakers);
+    return position;
+  }
+  const position = decodeStakerPosition(decodeRpcData(account.account.data));
+  if (position.leafIndex !== leafIndex || position.activeShares === 0n) {
+    throw new Error("Staker position failed leaf validation");
+  }
+  return position;
+}
+
+function u64Bytes(value: bigint) {
+  const bytes = new Uint8Array(8);
+  new DataView(bytes.buffer).setBigUint64(0, value, true);
+  return bytes;
 }
 
 async function transitionAlreadyApplied(

@@ -219,6 +219,25 @@ mod tests {
     }
 
     #[test]
+    fn threshold_changes_only_at_each_ten_minute_boundary() {
+        let staker_tvl = 1_000 * SOL;
+        let mut previous = activation_threshold(staker_tvl, 0).unwrap();
+
+        for step in 1..=100 {
+            let boundary = step * THRESHOLD_DECAY_INTERVAL_SECONDS;
+            assert_eq!(
+                activation_threshold(staker_tvl, boundary - 1).unwrap(),
+                previous,
+                "threshold changed before boundary {step}"
+            );
+
+            let at_boundary = activation_threshold(staker_tvl, boundary).unwrap();
+            assert!(at_boundary <= previous);
+            previous = at_boundary;
+        }
+    }
+
+    #[test]
     fn absolute_floor_wins_for_a_small_staker_pool() {
         let staker_tvl = 50 * SOL;
         assert_eq!(activation_floor(staker_tvl), Ok(MINIMUM_DRAW_POOL_LAMPORTS));

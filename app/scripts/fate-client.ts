@@ -12,11 +12,13 @@ import {
 export const CONFIG_SIZE = 256;
 export const DRAW_SIZE = 344;
 export const PLAYER_POSITION_SIZE = 144;
+export const STAKER_VAULT_SIZE = 56;
 export const STAKER_POSITION_SIZE = 112;
 export const WEIGHT_PAGE_SIZE = 344;
 export const CONFIG_DISCRIMINATOR = 100;
 export const DRAW_DISCRIMINATOR = 103;
 export const PLAYER_POSITION_DISCRIMINATOR = 104;
+export const STAKER_VAULT_DISCRIMINATOR = 101;
 export const STAKER_POSITION_DISCRIMINATOR = 102;
 export const WEIGHT_PAGE_DISCRIMINATOR = 105;
 export const RECENT_DRAW_CAPACITY = 10n;
@@ -71,12 +73,17 @@ export type DrawAccount = {
   initialThresholdLamports: bigint;
   activationThresholdLamports: bigint;
   playerTvlLamports: bigint;
+  totalPlayerWeight: bigint;
   winnerDepositLamports: bigint;
   winnerPayoutLamports: bigint;
   outstandingPlayerClaimLamports: bigint;
   protocolFeeLamports: bigint;
   stakerErosionLamports: bigint;
   openPlayerPositions: bigint;
+};
+
+export type StakerVaultAccount = {
+  totalShares: bigint;
 };
 
 export type PlayerPositionAccount = {
@@ -101,6 +108,7 @@ export type WeightPageAccount = {
   rentPayer: Address;
   level: bigint;
   prefix: bigint;
+  weights: bigint[];
 };
 
 export type SettlementParticipants = {
@@ -177,6 +185,7 @@ export function decodeDraw(data: Uint8Array): DrawAccount {
     initialThresholdLamports: u64(data, 200),
     activationThresholdLamports: u64(data, 208),
     playerTvlLamports: u64(data, 216),
+    totalPlayerWeight: u128(data, 224),
     winnerDepositLamports: u64(data, 264),
     winnerPayoutLamports: u64(data, 272),
     outstandingPlayerClaimLamports: u64(data, 280),
@@ -184,6 +193,11 @@ export function decodeDraw(data: Uint8Array): DrawAccount {
     stakerErosionLamports: u64(data, 296),
     openPlayerPositions: u64(data, 328),
   };
+}
+
+export function decodeStakerVault(data: Uint8Array): StakerVaultAccount {
+  assertAccountData(data, STAKER_VAULT_SIZE, STAKER_VAULT_DISCRIMINATOR);
+  return { totalShares: u64(data, 24) };
 }
 
 export function decodePlayerPosition(data: Uint8Array): PlayerPositionAccount {
@@ -207,6 +221,7 @@ export function decodeWeightPage(data: Uint8Array): WeightPageAccount {
     rentPayer: getAddressDecoder().decode(data.slice(40, 72)),
     level: u64(data, 72),
     prefix: u64(data, 80),
+    weights: Array.from({ length: 16 }, (_, branch) => u128(data, 88 + branch * 16)),
   };
 }
 
@@ -222,6 +237,10 @@ export function decodeStakerPosition(data: Uint8Array): StakerPositionAccount {
 function mulDivFloor(value: bigint, numerator: bigint, denominator: bigint) {
   if (denominator === 0n) throw new Error("division by zero");
   return (value * numerator) / denominator;
+}
+
+function u128(data: Uint8Array, offset: number) {
+  return u64(data, offset) | (u64(data, offset + 8) << 64n);
 }
 
 export function activationThreshold(stakerTvlLamports: bigint, elapsedSeconds: bigint) {
@@ -281,6 +300,32 @@ export function devSettlementParticipants(
   if (activePlayers.length === 0 || activeStakers.length === 0) {
     throw new Error("settlement requires active Player and Staker positions");
   }
+  const selection = devSettlementSelection(
+    drawId,
+    activePlayers.reduce((sum, position) => sum + position.weight, 0n),
+    activeStakers.reduce((sum, position) => sum + position.activeShares, 0n),
+  );
+  const player =
+    selection.side === "player"
+      ? selectPosition(activePlayers, selection.target, (position) => position.weight)
+      : activePlayers[0];
+  const staker =
+    selection.side === "staker"
+      ? selectPosition(activeStakers, selection.target, (position) => position.activeShares)
+      : activeStakers[0];
+  return {
+    player: player.authority,
+    playerIndex: player.leafIndex,
+    staker: staker.authority,
+    stakerIndex: staker.leafIndex,
+  };
+}
+
+export function devSettlementSelection(
+  drawId: bigint,
+  totalPlayerWeight: bigint,
+  totalStakerWeight: bigint,
+) {
   const desiredSide = drawId % 2n === 0n ? "player" : "staker";
   let entropy: Uint8Array | undefined;
   for (let nonce = 0n; nonce < 256n; nonce += 1n) {
@@ -291,51 +336,62 @@ export function devSettlementParticipants(
     }
   }
   if (!entropy) throw new Error("dev entropy search exhausted");
-  const player =
-    desiredSide === "player"
-      ? selectPosition(
-          activePlayers,
-          winnerTarget(
-            entropy,
-            drawId,
-            PLAYER_WINNER_DOMAIN,
-            activePlayers.map((position) => position.weight),
-          ),
-          (position) => position.weight,
-        )
-      : activePlayers[0];
-  const staker =
-    desiredSide === "staker"
-      ? selectPosition(
-          activeStakers,
-          winnerTarget(
-            entropy,
-            drawId,
-            STAKER_WINNER_DOMAIN,
-            activeStakers.map((position) => position.activeShares),
-          ),
-          (position) => position.activeShares,
-        )
-      : activeStakers[0];
+  const totalWeight = desiredSide === "player" ? totalPlayerWeight : totalStakerWeight;
+  const domain = desiredSide === "player" ? PLAYER_WINNER_DOMAIN : STAKER_WINNER_DOMAIN;
   return {
-    player: player.authority,
-    playerIndex: player.leafIndex,
-    staker: staker.authority,
-    stakerIndex: staker.leafIndex,
-  };
+    side: desiredSide,
+    target: winnerTarget(entropy, drawId, domain, totalWeight),
+  } as const;
+}
+
+export function selectWeightBranch(weights: bigint[], target: bigint) {
+  let skipped = 0n;
+  for (const [branch, weight] of weights.entries()) {
+    const end = skipped + weight;
+    if (target < end) return { branch, remainder: target - skipped };
+    skipped = end;
+  }
+  throw new Error("selection outside weight page");
+}
+
+export function selectWeightedIndex(pages: WeightPageAccount[], tree: Address, target: bigint) {
+  if (pages.length !== WEIGHT_TREE_DEPTH) throw new Error("invalid weight path length");
+  if (target < 0n) throw new Error("invalid weighted selection");
+  let index = 0n;
+  for (const [level, page] of pages.entries()) {
+    const expectedPrefix =
+      level === 0
+        ? 0n
+        : (index >> BigInt((WEIGHT_TREE_DEPTH - level) * 4)) <<
+          BigInt((WEIGHT_TREE_DEPTH - level) * 4);
+    if (page.tree !== tree || page.level !== BigInt(level) || page.prefix !== expectedPrefix) {
+      throw new Error("invalid weight page relationship");
+    }
+    const selected = selectWeightBranch(page.weights, target);
+    index |= BigInt(selected.branch) << BigInt((WEIGHT_TREE_DEPTH - 1 - level) * 4);
+    target = selected.remainder;
+    if (level < WEIGHT_TREE_DEPTH - 1) {
+      const child = pages[level + 1];
+      const childTotal = child.weights.reduce((sum, weight) => sum + weight, 0n);
+      if (page.weights[selected.branch] !== childTotal) {
+        throw new Error("weight page parent total mismatch");
+      }
+    }
+  }
+  return index;
 }
 
 function selectedSide(entropy: Uint8Array, drawId: bigint) {
   return unbiasedRoll(entropy, drawId, SIDE_DOMAIN, 10_000n) < 9_000n ? "player" : "staker";
 }
 
-function winnerTarget(entropy: Uint8Array, drawId: bigint, domain: Uint8Array, weights: bigint[]) {
-  return unbiasedRoll(
-    entropy,
-    drawId,
-    domain,
-    weights.reduce((sum, weight) => sum + weight, 0n),
-  );
+function winnerTarget(
+  entropy: Uint8Array,
+  drawId: bigint,
+  domain: Uint8Array,
+  totalWeight: bigint,
+) {
+  return unbiasedRoll(entropy, drawId, domain, totalWeight);
 }
 
 function unbiasedRoll(entropy: Uint8Array, drawId: bigint, domain: Uint8Array, bound: bigint) {
@@ -381,6 +437,24 @@ export async function fateAddresses(programAddress: Address, drawId: bigint) {
   return { config, draw, vault, nextDraw };
 }
 
+export async function weightPageAddress(
+  programAddress: Address,
+  tree: Address,
+  level: number,
+  prefix: bigint,
+) {
+  const [page] = await getProgramDerivedAddress({
+    programAddress,
+    seeds: [
+      WEIGHT_PAGE_SEED,
+      getAddressEncoder().encode(tree),
+      drawIdSeed(BigInt(level)),
+      drawIdSeed(prefix),
+    ],
+  });
+  return page;
+}
+
 export async function participantAddresses(
   programAddress: Address,
   drawId: bigint,
@@ -410,16 +484,7 @@ async function weightPath(programAddress: Address, tree: Address, index: bigint)
     Array.from({ length: WEIGHT_TREE_DEPTH }, async (_, level) => {
       const remainingBits = BigInt((WEIGHT_TREE_DEPTH - level) * 4);
       const prefix = level === 0 ? 0n : (index >> remainingBits) << remainingBits;
-      const [page] = await getProgramDerivedAddress({
-        programAddress,
-        seeds: [
-          WEIGHT_PAGE_SEED,
-          getAddressEncoder().encode(tree),
-          drawIdSeed(BigInt(level)),
-          drawIdSeed(prefix),
-        ],
-      });
-      return page;
+      return weightPageAddress(programAddress, tree, level, prefix);
     }),
   );
 }

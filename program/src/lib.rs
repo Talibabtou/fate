@@ -143,4 +143,88 @@ mod malformed_input_tests {
             );
         }
     }
+
+    #[test]
+    fn every_instruction_rejects_truncated_wire_data() {
+        let program_id = Pubkey::new_unique();
+        let instructions = [
+            Initialize {}.to_bytes(),
+            DepositStake { amount: [0; 8] }.to_bytes(),
+            RequestStakeWithdrawal { shares: [0; 8] }.to_bytes(),
+            DepositPlayer { amount: [0; 8] }.to_bytes(),
+            RefundPlayer {}.to_bytes(),
+            ActivateDraw {}.to_bytes(),
+            Pause {}.to_bytes(),
+            Unpause {}.to_bytes(),
+            ClaimPlayer { draw_id: [0; 8] }.to_bytes(),
+            ClaimStakeWithdrawal {}.to_bytes(),
+            LockDraw {}.to_bytes(),
+            SettleDrawDev {}.to_bytes(),
+            CloseDraw { draw_id: [0; 8] }.to_bytes(),
+            ClosePlayerPosition { draw_id: [0; 8] }.to_bytes(),
+            CloseWeightPage { draw_id: [0; 8] }.to_bytes(),
+        ];
+
+        for data in instructions {
+            if data.len() > 1 {
+                assert!(
+                    process_instruction(&program_id, &[], &data[..data.len() - 1]).is_err(),
+                    "truncated instruction unexpectedly parsed for tag {}",
+                    data[0]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn every_account_decode_rejects_wrong_owner_length_and_discriminator() {
+        let program_id = Pubkey::new_unique();
+        let key = Pubkey::new_unique();
+        let mut lamports = 1;
+
+        let mut wrong_owner_data = vec![0; 8 + std::mem::size_of::<Config>()];
+        let wrong_owner = Pubkey::new_unique();
+        let wrong_owner_account = AccountInfo::new(
+            &key,
+            false,
+            false,
+            &mut lamports,
+            &mut wrong_owner_data,
+            &wrong_owner,
+            false,
+            0,
+        );
+        assert!(wrong_owner_account
+            .as_account::<Config>(&program_id)
+            .is_err());
+
+        let mut wrong_length_data = vec![0; 8 + std::mem::size_of::<Config>() - 1];
+        let correct_account = AccountInfo::new(
+            &key,
+            false,
+            false,
+            &mut lamports,
+            &mut wrong_length_data,
+            &program_id,
+            false,
+            0,
+        );
+        assert!(correct_account.as_account::<Config>(&program_id).is_err());
+
+        let mut wrong_discriminator_data = vec![0; 8 + std::mem::size_of::<Config>()];
+        wrong_discriminator_data[0] = Config::discriminator().wrapping_add(1);
+        let wrong_discriminator_account = AccountInfo::new(
+            &key,
+            false,
+            false,
+            &mut lamports,
+            &mut wrong_discriminator_data,
+            &program_id,
+            false,
+            0,
+        );
+        assert!(wrong_discriminator_account
+            .as_account::<Config>(&program_id)
+            .is_err());
+    }
 }

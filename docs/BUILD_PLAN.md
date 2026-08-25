@@ -182,14 +182,14 @@ Verification on 2026-08-17 found no Entropy program at its declared ID on devnet
 
 ## Program Tests
 
-The SVM lifecycle runs through the real Solana runtime and proves that 117 distinct Player wallets can enter one draw. It separately covers initialization, Staker/Player deposits, activation, countdown locking, weighted-path settlement, Player claim, position/page rent cleanup, and creation of the following draw. The localnet audit harness now covers adversarial phase and authority checks, funding refunds and withdrawals, direct donations, custody checks, both deterministic settlement sides, double-settlement and double-claim rejection, pause-safe settlement, draw cleanup, next-draw creation, and the final-Staker exit guard. Deterministic math now has randomized lamport-conservation and overflow-boundary coverage, and program dispatch has malformed wire/account-list tests; broad substituted-account fuzzing and mainnet Entropy validation remain pending.
+The SVM lifecycle runs through the real Solana runtime and proves that 117 distinct Player wallets can enter one draw. It separately covers initialization, Staker/Player deposits, activation, countdown locking, weighted-path settlement, Player claim, position/page rent cleanup, and creation of the following draw. The localnet audit harness now covers adversarial phase and authority checks, funding refunds and withdrawals, direct donations, custody checks, both deterministic settlement sides, double-settlement and double-claim rejection, pause-safe settlement, draw cleanup, next-draw creation, and the final-Staker exit guard. The focused SVM adversarial matrix now covers fresh-blockhash replay checks, PDA/page substitution, signer and writable-account failures, pre-funded initialization, reinitialization, duplicate initialization targets, account owner/length/discriminator decoding, truncated wire data, and the production Entropy account gate. Deterministic math now checks every 10-minute threshold boundary plus randomized lamport conservation and overflow boundaries. Broad substituted-account fuzzing, fake-sysvar injection (there is no caller-supplied sysvar account surface; time comes from the runtime Clock), and mainnet Entropy validation remain pending.
 
-- [ ] Test all state transitions and reject transitions from the wrong phase.
+- [x] Test all state transitions and reject transitions from the wrong phase.
 - [ ] Test every instruction's owner, data-length, discriminator, signer, writable/read-only, PDA seed, canonical bump, and stored-relationship validation.
-- [ ] Test reinitialization, pre-funded PDA initialization, duplicate mutable accounts, fake sysvars, substituted CPI programs, and account type cosplay.
+- [x] Test reinitialization, pre-funded PDA initialization, duplicate mutable accounts, the runtime-only Clock boundary, substituted Entropy accounts, and account type cosplay. Caller-supplied fake sysvars are not an instruction surface.
 - [x] Test direct lamport donations cannot change tracked assets, liabilities, or shares.
 - [x] Assert tracked custody assets plus rent cover the tested refunds, withdrawals, and claims after each audited value-moving path.
-- [ ] Test threshold decay at every 10-minute boundary.
+- [x] Test threshold decay at every 10-minute boundary.
 - [x] Test activation at, below, and above the exact threshold.
 - [x] Test the larger-of-two activation floor at several Staker TVLs.
 - [x] Test deposits immediately before and after snapshot, activation, countdown start, and settlement.
@@ -200,7 +200,7 @@ The SVM lifecycle runs through the real Solana runtime and proves that 117 disti
 - [x] Test zero losing-Player deposits so a solo Player's own principal is never charged as profit.
 - [x] Test the 5% fee on erosion.
 - [x] Test every covered rounding remainder and arithmetic overflow boundary; retain a broader fuzz campaign as a separate security gate.
-- [ ] Test malformed, substituted, duplicate, non-writable, and incorrectly owned accounts.
+- [x] Test malformed, substituted, duplicate, non-writable, and incorrectly owned accounts in the deterministic SVM/unit matrix; retain broader substituted-account fuzzing as a security gate.
 - [x] Test unauthorized administration and false Entropy accounts.
 - [x] Test double settlement, double claim, replay rejection, and stale phase transitions. Production Entropy freshness remains pending.
 - [x] Test expired-account closure cannot strand refunds or claims, close a recent draw, redirect rent, or close twice.
@@ -214,8 +214,8 @@ The SVM lifecycle runs through the real Solana runtime and proves that 117 disti
 The keeper is a small script, not a service platform. State transitions remain callable by anyone.
 
 - [x] Add one Node script under `app/scripts` that reads the current draw and submits only a transition that is due. Run it as a separate long-lived worker; see `KEEPER.md`.
-- [ ] Handle activation, locking, Entropy sampling and reveal, timeout recovery, and settlement. Activation, locking, and feature-gated dev settlement are implemented; mainnet Entropy remains.
-- [ ] Use a dedicated hot fee-payer key with a limited SOL balance.
+- [x] Handle activation, locking, feature-gated dev settlement, and cleanup. The worker walks the weighted pages and fetches only the selected leaf positions; mainnet Entropy sampling/reveal and timeout recovery remain a separate production gate.
+- [x] Use a dedicated hot fee-payer key with a limited SOL balance; the worker accepts only an explicit server-side key path and never loads authority or treasury keys.
 - [x] Keep the authority and fee treasury wallet out of the keeper process.
 - [ ] Fund keeper transaction fees from protocol revenue by manual treasury transfer in v1.
 - [x] Do not add an on-chain caller reward in v1.

@@ -1,13 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { address } from "@solana/kit";
+import { useConnectWallet } from "@privy-io/react-auth";
+import { useWallets } from "@privy-io/react-auth/solana";
 import { type DrawAccount, DrawPhase } from "../../scripts/fate-client";
 import {
   browserProgramAddress,
-  browserRpcUrl,
+  readSolBalance,
   type FateSnapshot,
   readFateSnapshot,
 } from "../lib/fate-browser";
+import { privyWalletChain } from "../lib/privy-wallet";
 
 const SOL = 1_000_000_000n;
 const phaseLabels: Record<number, string> = {
@@ -19,12 +23,16 @@ const phaseLabels: Record<number, string> = {
   [DrawPhase.Voided]: "Voided",
 };
 
+type WalletStatus = "unavailable" | "checking" | "disconnected" | "wrong-network" | "connected";
+
 export function FatePage() {
   const [snapshot, setSnapshot] = useState<FateSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [mode, setMode] = useState<"staker" | "player">("player");
   const [amount, setAmount] = useState("0.10");
+  const [now, setNow] = useState(() => Date.now());
+  const [walletStatus, setWalletStatus] = useState<WalletStatus>("unavailable");
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -44,185 +52,144 @@ export function FatePage() {
     return () => window.clearInterval(interval);
   }, [refresh]);
 
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   const draw = snapshot?.draw;
   const config = snapshot?.config;
   const phase = draw ? (phaseLabels[draw.phase] ?? "Unknown") : "Connecting";
   const progress = draw ? thresholdProgress(draw) : 0;
+  const isPlayer = mode === "player";
+  const hasPrivy = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID?.trim());
 
   return (
-    <main className="mx-auto min-h-screen max-w-7xl px-5 py-5 sm:px-8 lg:px-12">
-      <header className="flex items-center justify-between border-b hairline pb-5">
-        <div className="flex items-center gap-3">
-          <span className="display-font text-2xl font-semibold tracking-tight">Fate</span>
-          <span className="hidden text-xs text-[var(--dim)] sm:inline">one draw at a time</span>
+    <main className="fate-page">
+      <header className="fate-header">
+        <div className="brand-lockup">
+          <span className="display-font brand-name">Fate</span>
+          <span className="brand-note">one draw at a time</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="rounded-full border hairline px-3 py-1.5 text-xs text-[var(--muted)]">
-            {networkLabel()}
-          </span>
-          <button
-            className="rounded-full border border-[var(--accent)]/40 bg-[var(--accent-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--accent)]"
-            type="button"
-            disabled
-            title="Wallet connection is the next integration step"
-          >
-            Connect wallet
-          </button>
+        <div className="header-actions">
+          <span className="network-mark">{networkLabel()}</span>
+          {hasPrivy ? <WalletControls onStatusChange={setWalletStatus} /> : <StaticWalletControls />}
         </div>
       </header>
 
-      <section className="grid gap-10 pb-16 pt-12 lg:grid-cols-[1.1fr_0.9fr] lg:items-end lg:pt-20">
-        <div>
-          <p className="eyebrow">A visible-risk SOL draw</p>
-          <h1 className="display-font mt-4 max-w-3xl text-5xl leading-[0.95] sm:text-7xl">
-            The pool is open. <span className="text-[var(--accent)]">Know the terms.</span>
-          </h1>
-          <p className="mt-6 max-w-xl text-base leading-7 text-[var(--muted)] sm:text-lg">
-            One Player can win the other Player deposits. Stakers share the pool’s exposure. Every
-            threshold, fee, payout, and maximum loss stays visible before a wallet signs.
-          </p>
-        </div>
-        <div className="flex gap-8 border-l hairline pl-6 lg:justify-self-end">
-          <Metric label="Player side" value="90%" detail="fixed chance" />
-          <Metric label="Staker side" value="10%" detail="fixed chance" />
-        </div>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-[1.35fr_0.65fr]">
-        <div className="panel rounded-[2rem] p-5 sm:p-7">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="eyebrow">Current draw</p>
-              <div className="mt-2 flex items-center gap-3">
-                <h2 className="display-font text-4xl">#{draw?.id.toString() ?? "—"}</h2>
-                <span className="flex items-center gap-2 rounded-full bg-[var(--accent-soft)] px-3 py-1 text-xs font-semibold text-[var(--accent)]">
-                  <span className="live-dot h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
-                  {phase}
-                </span>
-              </div>
-            </div>
-            <button
-              className="text-xs text-[var(--muted)] underline decoration-[var(--dim)] underline-offset-4 hover:text-[var(--ink)]"
-              onClick={() => void refresh()}
-              type="button"
-            >
-              {refreshing ? "Refreshing…" : "Refresh state"}
-            </button>
+      <section className="fate-workspace" aria-label="Current Fate draw">
+        <div className="draw-heading">
+          <div>
+            <p className="eyebrow">Current draw</p>
+            <h1 className="display-font draw-title">
+              #{draw?.id.toString() ?? "—"} <span>{phase}</span>
+            </h1>
           </div>
+          <button className="quiet-button" onClick={() => void refresh()} type="button">
+            <span className={refreshing ? "refresh-mark is-spinning" : "refresh-mark"}>↻</span>
+            {refreshing ? "Reading" : "Refresh"}
+          </button>
+        </div>
 
-          <div className="mt-9 rounded-2xl border hairline bg-black/10 p-4 sm:p-5">
-            <div className="flex items-end justify-between gap-4">
-              <div>
-                <p className="text-sm text-[var(--muted)]">Player threshold</p>
-                <p className="mt-1 text-2xl font-semibold tracking-tight">
-                  {draw
-                    ? `${formatSol(draw.playerTvlLamports)} / ${formatSol(draw.activationThresholdLamports)} SOL`
-                    : "—"}
-                </p>
-              </div>
-              <p className="mono text-xs text-[var(--dim)]">
-                {draw ? `${progress}% filled` : "awaiting RPC"}
+        <div className="draw-context">
+          <div className="context-topline">
+            <div>
+              <p className="context-label">Player threshold</p>
+              <p className="context-value">
+                {draw ? `${formatSol(draw.playerTvlLamports)} / ${formatSol(draw.activationThresholdLamports)} SOL` : "—"}
               </p>
             </div>
-            <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/8">
-              <div
-                className="h-full rounded-full bg-[var(--accent)] transition-all"
-                style={{ width: `${progress}%` }}
+            <div className="context-state">
+              <span className="live-dot" />
+              <span>{draw ? `${progress}% filled` : "Awaiting RPC"}</span>
+            </div>
+          </div>
+          <div className="progress-track" aria-label={`${progress}% of threshold filled`}>
+            <div className="progress-value" style={{ width: `${progress}%` }} />
+          </div>
+          <div className="context-meta">
+            <span>{countdownLabel(draw, now)}</span>
+            <span>{draw ? `Staker TVL ${formatSol(draw.stakerTvlSnapshot)} SOL` : "Staker TVL —"}</span>
+          </div>
+        </div>
+
+        <div className="action-layout">
+          <div className="action-intro">
+            <p className="eyebrow">Your move</p>
+            <h2 className="display-font action-title">Choose a side.</h2>
+            <p className="action-copy">One deposit enters the current draw. The terms stay visible before signing.</p>
+          </div>
+
+          <div className="action-form">
+            <div className="mode-switch" aria-label="Choose a side" role="group">
+              <ModeButton active={!isPlayer} label="Staker" onClick={() => setMode("staker")} />
+              <ModeButton active={isPlayer} label="Player" onClick={() => setMode("player")} />
+            </div>
+
+            <label className="amount-field">
+              <span className="sr-only">{mode} amount in SOL</span>
+              <input
+                aria-label={`${mode} amount in SOL`}
+                inputMode="decimal"
+                min="0"
+                onChange={(event) => setAmount(event.target.value)}
+                placeholder="0.10"
+                value={amount}
               />
-            </div>
-            <div className="mt-4 flex justify-between text-xs text-[var(--dim)]">
-              <span>Funding starts at 1% of Staker TVL</span>
-              <span>{countdownLabel(draw)}</span>
-            </div>
-          </div>
+              <span>SOL</span>
+            </label>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <DataPoint
-              label="Staker TVL snapshot"
-              value={draw ? `${formatSol(draw.stakerTvlSnapshot)} SOL` : "—"}
-            />
-            <DataPoint
-              label="Player deposits"
-              value={draw ? `${formatSol(draw.playerTvlLamports)} SOL` : "—"}
-            />
-            <DataPoint
-              label="Max Player loss"
-              value={draw ? `${formatSol(draw.playerTvlLamports)} SOL` : "—"}
-            />
+            <button className="primary-action" disabled type="button">
+              {walletStatus === "connected" ? "Deposit flow next" : `Connect wallet to ${isPlayer ? "play" : "stake"}`}
+              <span aria-hidden="true">→</span>
+            </button>
+
+            <p className="minimum-note">
+              Minimum {mode === "player" ? "Player" : "Staker"} deposit: {mode === "player" ? "0.01" : "0.10"} SOL
+            </p>
           </div>
         </div>
 
-        <div className="panel rounded-[2rem] p-5 sm:p-7">
-          <div className="flex rounded-xl border hairline p-1">
-            <ModeButton
-              active={mode === "staker"}
-              label="Staker"
-              onClick={() => setMode("staker")}
-            />
-            <ModeButton
-              active={mode === "player"}
-              label="Player"
-              onClick={() => setMode("player")}
-            />
-          </div>
-          <p className="mt-7 text-sm text-[var(--muted)]">
-            {mode === "player" ? "Enter the draw" : "Add to the vault"}
-          </p>
-          <div className="mt-2 flex items-center gap-2 border-b hairline pb-3">
-            <input
-              aria-label={`${mode} amount in SOL`}
-              className="w-full bg-transparent text-4xl font-semibold tracking-tight outline-none placeholder:text-[var(--dim)]"
-              inputMode="decimal"
-              min="0"
-              onChange={(event) => setAmount(event.target.value)}
-              placeholder="0.10"
-              value={amount}
-            />
-            <span className="text-sm text-[var(--muted)]">SOL</span>
-          </div>
-          <button
-            className="mt-5 w-full rounded-xl bg-[var(--accent)] px-4 py-3.5 text-sm font-bold text-[#142014] opacity-60"
-            disabled
-            type="button"
-          >
-            Connect wallet to continue
-          </button>
-          <p className="mt-4 text-xs leading-5 text-[var(--dim)]">
-            {mode === "player"
-              ? "Minimum Player deposit: 0.01 SOL. Pending deposits can be refunded during funding."
-              : "Minimum Staker deposit: 0.1 SOL. Staker SOL stays inert and can erode through Player wins."}
-          </p>
+        <div className="details-stack">
+          <details className="info-toggle">
+            <summary>
+              <span>View draw terms</span>
+              <span className="toggle-icon" aria-hidden="true">+</span>
+            </summary>
+            <div className="terms-grid">
+              <Term label="Side odds" value="Player 90% · Staker 10%" />
+              <Term label="Player max loss" value={draw ? `${formatSol(draw.playerTvlLamports)} SOL` : "—"} />
+              <Term label="Player fee" value="5% of profit" />
+              <Term label="Staker exposure" value="Principal can erode" />
+              <p className="terms-note">
+                The selected side is fixed first, then one wallet wins by its stored weight. Pending Player deposits can be refunded only during funding.
+              </p>
+            </div>
+          </details>
+
+          <details className="info-toggle">
+            <summary>
+              <span>Recent draws & disclosures</span>
+              <span className="toggle-icon" aria-hidden="true">+</span>
+            </summary>
+            <div className="history-row">
+              <div>
+                <span className="context-label">Recent settled draws</span>
+                <p>{config?.recentDrawIds.length ? config.recentDrawIds.slice(0, 5).map((id) => `#${id}`).join(" · ") : "No settled draws yet"}</p>
+              </div>
+              <p className="terms-note">Native SOL only. Fate is not a guaranteed-principal product.</p>
+            </div>
+          </details>
         </div>
       </section>
 
-      <section className="grid gap-4 py-4 sm:grid-cols-2">
-        <InfoPanel
-          eyebrow="The split"
-          title="One side wins. One wallet wins."
-          copy="Every draw first selects Player or Staker, then selects exactly one wallet from that side by its stored weight."
-          rows={["Player: 90%", "Staker: 10%", "Protocol fee: 5% of profit"]}
-        />
-        <InfoPanel
-          eyebrow="Recent draws"
-          title="History stays compact."
-          copy="The program keeps the latest ten settled draw IDs on-chain. Detailed settlement receipts will follow wallet integration."
-          rows={
-            config?.recentDrawIds.length
-              ? config.recentDrawIds.slice(0, 3).map((id) => `Draw #${id}`)
-              : ["No settled draws yet"]
-          }
-        />
-      </section>
-
-      <footer className="flex flex-col gap-3 border-t hairline py-7 text-xs leading-5 text-[var(--dim)] sm:flex-row sm:items-center sm:justify-between">
-        <span>Native SOL only · Fate is not a guaranteed-principal product.</span>
-        <span className="mono">
-          {browserProgramAddress()?.slice(0, 8) ?? "program not configured"} · {browserRpcUrl()}
-        </span>
+      <footer className="fate-footer">
+        <span>Devnet preview · read-only until wallet access is connected</span>
+        <span className="mono">{browserProgramAddress()?.slice(0, 8) ?? "program not configured"}</span>
       </footer>
 
       {error ? (
-        <div className="fixed bottom-4 left-4 right-4 mx-auto max-w-xl rounded-xl border border-[var(--warm)]/30 bg-[#261d18] px-4 py-3 text-xs text-[var(--warm)] shadow-2xl">
+        <div className="error-toast">
           Read-only preview: {error}. Configure the browser RPC and program ID to show live state.
         </div>
       ) : null}
@@ -230,67 +197,90 @@ export function FatePage() {
   );
 }
 
-function Metric({ label, value, detail }: { label: string; value: string; detail: string }) {
+function WalletControls({ onStatusChange }: { onStatusChange: (status: WalletStatus) => void }) {
+  const { connectWallet } = useConnectWallet();
+  const { ready, wallets } = useWallets();
+  const wallet = wallets[0];
+  const chain = privyWalletChain();
+  const onExpectedNetwork = Boolean(
+    wallet && chain && wallet.standardWallet.accounts.some((account) => account.chains.includes(chain)),
+  );
+  const [balance, setBalance] = useState<bigint | null>(null);
+
+  useEffect(() => {
+    const status: WalletStatus = !ready
+      ? "checking"
+      : !wallet
+        ? "disconnected"
+        : !chain || !onExpectedNetwork
+          ? "wrong-network"
+          : "connected";
+    onStatusChange(status);
+  }, [chain, onExpectedNetwork, onStatusChange, ready, wallet]);
+
+  useEffect(() => {
+    let active = true;
+    if (!wallet || !onExpectedNetwork) {
+      setBalance(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    void readSolBalance(address(wallet.address)).then(
+      (nextBalance) => {
+        if (active) setBalance(nextBalance);
+      },
+      () => {
+        if (active) setBalance(null);
+      },
+    );
+
+    return () => {
+      active = false;
+    };
+  }, [onExpectedNetwork, wallet]);
+
+  if (!ready) return <span className="wallet-state">Checking wallet…</span>;
+  if (!wallet) {
+    return (
+      <button className="wallet-button" onClick={() => connectWallet()} type="button">
+        Connect wallet
+      </button>
+    );
+  }
+
   return (
-    <div>
-      <p className="text-xs text-[var(--dim)]">{label}</p>
-      <p className="display-font mt-1 text-3xl">{value}</p>
-      <p className="mt-1 text-xs text-[var(--dim)]">{detail}</p>
+    <div className="wallet-connected" title={wallet.address}>
+      <span className={onExpectedNetwork ? "wallet-state is-connected" : "wallet-state is-wrong"}>
+        {onExpectedNetwork ? "Connected" : chain ? "Wrong network" : "Use devnet"}
+      </span>
+      <span className="mono wallet-address">{compactAddress(wallet.address)}</span>
+      <span className="wallet-balance">{formatWalletBalance(balance)}</span>
     </div>
   );
 }
 
-function DataPoint({ label, value }: { label: string; value: string }) {
+function StaticWalletControls() {
   return (
-    <div className="rounded-xl border hairline px-4 py-3">
-      <p className="text-xs text-[var(--dim)]">{label}</p>
-      <p className="mt-2 text-sm font-semibold text-[var(--ink)]">{value}</p>
+    <button className="wallet-button" disabled title="Set NEXT_PUBLIC_PRIVY_APP_ID to enable wallet access" type="button">
+      Connect wallet
+    </button>
+  );
+}
+
+function Term({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="term-row">
+      <span>{label}</span>
+      <strong>{value}</strong>
     </div>
   );
 }
 
-function InfoPanel({
-  eyebrow,
-  title,
-  copy,
-  rows,
-}: {
-  eyebrow: string;
-  title: string;
-  copy: string;
-  rows: string[];
-}) {
+function ModeButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
   return (
-    <div className="border-t hairline py-6">
-      <p className="eyebrow">{eyebrow}</p>
-      <h3 className="display-font mt-2 text-3xl">{title}</h3>
-      <p className="mt-3 max-w-md text-sm leading-6 text-[var(--muted)]">{copy}</p>
-      <div className="mt-5 space-y-2 text-xs text-[var(--dim)]">
-        {rows.map((row) => (
-          <p className="border-b hairline pb-2" key={row}>
-            {row}
-          </p>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ModeButton({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      className={`flex-1 rounded-lg px-3 py-2 text-sm transition ${active ? "bg-white/10 text-[var(--ink)]" : "text-[var(--dim)] hover:text-[var(--muted)]"}`}
-      onClick={onClick}
-      type="button"
-    >
+    <button className={active ? "mode-button is-active" : "mode-button"} onClick={onClick} type="button">
       {label}
     </button>
   );
@@ -300,16 +290,22 @@ function formatSol(lamports: bigint) {
   return (Number(lamports) / Number(SOL)).toFixed(2);
 }
 
-function thresholdProgress(draw: DrawAccount) {
-  if (draw.stakerTvlSnapshot === 0n) return 0;
-  const threshold = draw.activationThresholdLamports;
-  if (threshold === 0n) return 0;
-  return Math.min(100, Math.round(Number((draw.playerTvlLamports * 100n) / threshold)));
+function formatWalletBalance(lamports: bigint | null) {
+  return lamports === null ? "— SOL" : `${(Number(lamports) / Number(SOL)).toFixed(3)} SOL`;
 }
 
-function countdownLabel(draw: DrawAccount | undefined) {
-  if (!draw || draw.phase !== DrawPhase.Activated || draw.locksAt <= 0n) return "No countdown";
-  const remaining = Number(draw.locksAt) - Math.floor(Date.now() / 1000);
+function compactAddress(value: string) {
+  return `${value.slice(0, 4)}…${value.slice(-4)}`;
+}
+
+function thresholdProgress(draw: DrawAccount) {
+  if (draw.stakerTvlSnapshot === 0n || draw.activationThresholdLamports === 0n) return 0;
+  return Math.min(100, Math.round(Number((draw.playerTvlLamports * 100n) / draw.activationThresholdLamports)));
+}
+
+function countdownLabel(draw: DrawAccount | undefined, now: number) {
+  if (!draw || draw.phase !== DrawPhase.Activated || draw.locksAt <= 0n) return "Funding open";
+  const remaining = Number(draw.locksAt) - Math.floor(now / 1000);
   return remaining > 0 ? `${formatDuration(remaining)} remaining` : "Lock due";
 }
 

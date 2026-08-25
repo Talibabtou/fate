@@ -1,6 +1,6 @@
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { spawn } from "node:child_process";
 import { AccountRole, type Address, address, createClient, type Instruction } from "@solana/kit";
 import { solanaRpc } from "@solana/kit-plugin-rpc";
 import { payerFromFile } from "@solana/kit-plugin-signer";

@@ -114,8 +114,9 @@ fate/
 - [x] Initialize a root Cargo workspace containing `api` and `program`.
 - [x] Follow the layout and account-validation patterns in `repos/steel` and `repos/steel-book`.
 - [x] Scaffold `app` with Next.js, TypeScript, Tailwind CSS, pnpm, and the App Router. The first page is a read-only Kit-backed Fate state surface; wallet connection and transaction actions remain the next frontend gate.
-- [x] Add Biome with format, lint, and import-order checks for the keeper and app TypeScript.
+- [x] Add Biome with repository-wide format, lint, and import-order checks for supported JavaScript, TypeScript, JSON, and CSS files.
 - [x] Add root commands for program tests, production-feature tests, SBF builds, app checks/tests, localnet and devnet configuration validation, localnet e2e, and the keeper batch. Devnet deployment remains a guarded manual step.
+- [x] Make GitHub CI require frozen pnpm installation, repository checks, a production web smoke test, and host/SBF/production-artifact program checks; keep future Vercel deployment separate.
 - [x] Document required tool versions and environment variables.
 - [x] Keep RPC URLs, Privy app ID, program ID, Entropy addresses, and keeper keys out of source control.
 
@@ -238,11 +239,11 @@ The verified localnet audit on 2026-08-24 deployed program `BRBMYpjn9hCw9h5T7efx
 - [ ] Configure wallet-only Privy access for Solana external wallets with `toSolanaWalletConnectors({ shouldAutoConnect: true })`; do not create embedded wallets in v1.
 - [ ] Use `@solana/kit` for RPC, subscriptions, addresses, and transaction construction where Privy supports it.
 - [ ] Add `@solana/web3.js` only if a required Privy or Entropy transaction path cannot accept Kit transactions.
-- [ ] Support one environment-selected primary RPC and ordered read fallbacks.
-- [ ] Keep transaction submission and confirmation on the same RPC endpoint.
+- [x] Support one environment-selected primary RPC and ordered read fallbacks for browser reads. Keep `NEXT_PUBLIC_RPC_HTTP_URL` as the primary endpoint for future transaction submission.
+- [ ] Keep transaction submission and confirmation on the same RPC endpoint once transaction actions are enabled.
 - [ ] Add a typed Fate client for account decoding, PDA derivation, instructions, simulation, submission, and confirmation.
 - [ ] Subscribe to current draw, vault, connected Staker entry, and connected Player entry.
-- [ ] Fall back to bounded polling when a WebSocket subscription drops.
+- [x] Fall back to bounded polling with three bounded subscription retries when a WebSocket subscription drops.
 - [ ] Derive phase changes from confirmed on-chain state. Browser timers are display aids, not authority.
 - [ ] Show pending, submitted, confirmed, failed, and stale transaction states.
 - [ ] Refetch affected accounts after every confirmed transaction.

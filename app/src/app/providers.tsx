@@ -16,7 +16,11 @@ export function Providers({ children }: Readonly<{ children: React.ReactNode }>)
       appId={appId}
       config={{
         appearance: {
+          theme: "#0b100f",
           showWalletLoginFirst: true,
+          landingHeader: "Connect to Fate",
+          loginMessage: "Choose a Solana wallet to continue.",
+          walletList: ["jupiter", "phantom"],
           walletChainType: "solana-only",
         },
         embeddedWallets: {

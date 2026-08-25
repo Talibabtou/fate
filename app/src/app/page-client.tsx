@@ -1,17 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { address } from "@solana/kit";
-import { useConnectWallet } from "@privy-io/react-auth";
-import { useWallets } from "@privy-io/react-auth/solana";
+import { useEffect, useState } from "react";
 import { type DrawAccount, DrawPhase } from "../../scripts/fate-client";
-import {
-  browserProgramAddress,
-  readSolBalance,
-  type FateSnapshot,
-  readFateSnapshot,
-} from "../lib/fate-browser";
-import { privyWalletChain } from "../lib/privy-wallet";
+import { browserProgramAddress } from "../lib/fate-browser";
+import { useFateSnapshot } from "./use-fate-snapshot";
+import { StaticWalletControls, WalletControls, type WalletStatus } from "./wallet-controls";
 
 const SOL = 1_000_000_000n;
 const phaseLabels: Record<number, string> = {
@@ -23,34 +16,12 @@ const phaseLabels: Record<number, string> = {
   [DrawPhase.Voided]: "Voided",
 };
 
-type WalletStatus = "unavailable" | "checking" | "disconnected" | "wrong-network" | "connected";
-
 export function FatePage() {
-  const [snapshot, setSnapshot] = useState<FateSnapshot | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
+  const { snapshot, error, refreshing, refresh } = useFateSnapshot();
   const [mode, setMode] = useState<"staker" | "player">("player");
   const [amount, setAmount] = useState("0.10");
   const [now, setNow] = useState(() => Date.now());
   const [walletStatus, setWalletStatus] = useState<WalletStatus>("unavailable");
-
-  const refresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      setSnapshot(await readFateSnapshot());
-      setError(null);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Unable to read Fate state");
-    } finally {
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-    const interval = window.setInterval(() => void refresh(), 5_000);
-    return () => window.clearInterval(interval);
-  }, [refresh]);
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 1_000);
@@ -73,7 +44,11 @@ export function FatePage() {
         </div>
         <div className="header-actions">
           <span className="network-mark">{networkLabel()}</span>
-          {hasPrivy ? <WalletControls onStatusChange={setWalletStatus} /> : <StaticWalletControls />}
+          {hasPrivy ? (
+            <WalletControls onStatusChange={setWalletStatus} />
+          ) : (
+            <StaticWalletControls />
+          )}
         </div>
       </header>
 
@@ -96,7 +71,9 @@ export function FatePage() {
             <div>
               <p className="context-label">Player threshold</p>
               <p className="context-value">
-                {draw ? `${formatSol(draw.playerTvlLamports)} / ${formatSol(draw.activationThresholdLamports)} SOL` : "—"}
+                {draw
+                  ? `${formatSol(draw.playerTvlLamports)} / ${formatSol(draw.activationThresholdLamports)} SOL`
+                  : "—"}
               </p>
             </div>
             <div className="context-state">
@@ -104,12 +81,21 @@ export function FatePage() {
               <span>{draw ? `${progress}% filled` : "Awaiting RPC"}</span>
             </div>
           </div>
-          <div className="progress-track" aria-label={`${progress}% of threshold filled`}>
+          <div
+            aria-label="Player threshold progress"
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={progress}
+            className="progress-track"
+            role="progressbar"
+          >
             <div className="progress-value" style={{ width: `${progress}%` }} />
           </div>
           <div className="context-meta">
             <span>{countdownLabel(draw, now)}</span>
-            <span>{draw ? `Staker TVL ${formatSol(draw.stakerTvlSnapshot)} SOL` : "Staker TVL —"}</span>
+            <span>
+              {draw ? `Staker TVL ${formatSol(draw.stakerTvlSnapshot)} SOL` : "Staker TVL —"}
+            </span>
           </div>
         </div>
 
@@ -117,14 +103,17 @@ export function FatePage() {
           <div className="action-intro">
             <p className="eyebrow">Your move</p>
             <h2 className="display-font action-title">Choose a side.</h2>
-            <p className="action-copy">One deposit enters the current draw. The terms stay visible before signing.</p>
+            <p className="action-copy">
+              One deposit enters the current draw. The terms stay visible before signing.
+            </p>
           </div>
 
           <div className="action-form">
-            <div className="mode-switch" aria-label="Choose a side" role="group">
+            <fieldset className="mode-switch">
+              <legend className="sr-only">Choose a side</legend>
               <ModeButton active={!isPlayer} label="Staker" onClick={() => setMode("staker")} />
               <ModeButton active={isPlayer} label="Player" onClick={() => setMode("player")} />
-            </div>
+            </fieldset>
 
             <label className="amount-field">
               <span className="sr-only">{mode} amount in SOL</span>
@@ -140,12 +129,15 @@ export function FatePage() {
             </label>
 
             <button className="primary-action" disabled type="button">
-              {walletStatus === "connected" ? "Deposit flow next" : `Connect wallet to ${isPlayer ? "play" : "stake"}`}
+              {walletStatus === "connected"
+                ? "Deposit flow next"
+                : `Connect wallet to ${isPlayer ? "play" : "stake"}`}
               <span aria-hidden="true">→</span>
             </button>
 
             <p className="minimum-note">
-              Minimum {mode === "player" ? "Player" : "Staker"} deposit: {mode === "player" ? "0.01" : "0.10"} SOL
+              Minimum {mode === "player" ? "Player" : "Staker"} deposit:{" "}
+              {mode === "player" ? "0.01" : "0.10"} SOL
             </p>
           </div>
         </div>
@@ -154,15 +146,21 @@ export function FatePage() {
           <details className="info-toggle">
             <summary>
               <span>View draw terms</span>
-              <span className="toggle-icon" aria-hidden="true">+</span>
+              <span className="toggle-icon" aria-hidden="true">
+                +
+              </span>
             </summary>
             <div className="terms-grid">
               <Term label="Side odds" value="Player 90% · Staker 10%" />
-              <Term label="Player max loss" value={draw ? `${formatSol(draw.playerTvlLamports)} SOL` : "—"} />
+              <Term
+                label="Player max loss"
+                value={draw ? `${formatSol(draw.playerTvlLamports)} SOL` : "—"}
+              />
               <Term label="Player fee" value="5% of profit" />
               <Term label="Staker exposure" value="Principal can erode" />
               <p className="terms-note">
-                The selected side is fixed first, then one wallet wins by its stored weight. Pending Player deposits can be refunded only during funding.
+                The selected side is fixed first, then one wallet wins by its stored weight. Pending
+                Player deposits can be refunded only during funding.
               </p>
             </div>
           </details>
@@ -170,14 +168,25 @@ export function FatePage() {
           <details className="info-toggle">
             <summary>
               <span>Recent draws & disclosures</span>
-              <span className="toggle-icon" aria-hidden="true">+</span>
+              <span className="toggle-icon" aria-hidden="true">
+                +
+              </span>
             </summary>
             <div className="history-row">
               <div>
                 <span className="context-label">Recent settled draws</span>
-                <p>{config?.recentDrawIds.length ? config.recentDrawIds.slice(0, 5).map((id) => `#${id}`).join(" · ") : "No settled draws yet"}</p>
+                <p>
+                  {config?.recentDrawIds.length
+                    ? config.recentDrawIds
+                        .slice(0, 5)
+                        .map((id) => `#${id}`)
+                        .join(" · ")
+                    : "No settled draws yet"}
+                </p>
               </div>
-              <p className="terms-note">Native SOL only. Fate is not a guaranteed-principal product.</p>
+              <p className="terms-note">
+                Native SOL only. Fate is not a guaranteed-principal product.
+              </p>
             </div>
           </details>
         </div>
@@ -185,7 +194,9 @@ export function FatePage() {
 
       <footer className="fate-footer">
         <span>Devnet preview · read-only until wallet access is connected</span>
-        <span className="mono">{browserProgramAddress()?.slice(0, 8) ?? "program not configured"}</span>
+        <span className="mono">
+          {browserProgramAddress()?.slice(0, 8) ?? "program not configured"}
+        </span>
       </footer>
 
       {error ? (
@@ -196,79 +207,6 @@ export function FatePage() {
     </main>
   );
 }
-
-function WalletControls({ onStatusChange }: { onStatusChange: (status: WalletStatus) => void }) {
-  const { connectWallet } = useConnectWallet();
-  const { ready, wallets } = useWallets();
-  const wallet = wallets[0];
-  const chain = privyWalletChain();
-  const onExpectedNetwork = Boolean(
-    wallet && chain && wallet.standardWallet.accounts.some((account) => account.chains.includes(chain)),
-  );
-  const [balance, setBalance] = useState<bigint | null>(null);
-
-  useEffect(() => {
-    const status: WalletStatus = !ready
-      ? "checking"
-      : !wallet
-        ? "disconnected"
-        : !chain || !onExpectedNetwork
-          ? "wrong-network"
-          : "connected";
-    onStatusChange(status);
-  }, [chain, onExpectedNetwork, onStatusChange, ready, wallet]);
-
-  useEffect(() => {
-    let active = true;
-    if (!wallet || !onExpectedNetwork) {
-      setBalance(null);
-      return () => {
-        active = false;
-      };
-    }
-
-    void readSolBalance(address(wallet.address)).then(
-      (nextBalance) => {
-        if (active) setBalance(nextBalance);
-      },
-      () => {
-        if (active) setBalance(null);
-      },
-    );
-
-    return () => {
-      active = false;
-    };
-  }, [onExpectedNetwork, wallet]);
-
-  if (!ready) return <span className="wallet-state">Checking wallet…</span>;
-  if (!wallet) {
-    return (
-      <button className="wallet-button" onClick={() => connectWallet()} type="button">
-        Connect wallet
-      </button>
-    );
-  }
-
-  return (
-    <div className="wallet-connected" title={wallet.address}>
-      <span className={onExpectedNetwork ? "wallet-state is-connected" : "wallet-state is-wrong"}>
-        {onExpectedNetwork ? "Connected" : chain ? "Wrong network" : "Use devnet"}
-      </span>
-      <span className="mono wallet-address">{compactAddress(wallet.address)}</span>
-      <span className="wallet-balance">{formatWalletBalance(balance)}</span>
-    </div>
-  );
-}
-
-function StaticWalletControls() {
-  return (
-    <button className="wallet-button" disabled title="Set NEXT_PUBLIC_PRIVY_APP_ID to enable wallet access" type="button">
-      Connect wallet
-    </button>
-  );
-}
-
 function Term({ label, value }: { label: string; value: string }) {
   return (
     <div className="term-row">
@@ -278,9 +216,21 @@ function Term({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ModeButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+function ModeButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
   return (
-    <button className={active ? "mode-button is-active" : "mode-button"} onClick={onClick} type="button">
+    <button
+      className={active ? "mode-button is-active" : "mode-button"}
+      onClick={onClick}
+      type="button"
+    >
       {label}
     </button>
   );
@@ -290,17 +240,12 @@ function formatSol(lamports: bigint) {
   return (Number(lamports) / Number(SOL)).toFixed(2);
 }
 
-function formatWalletBalance(lamports: bigint | null) {
-  return lamports === null ? "— SOL" : `${(Number(lamports) / Number(SOL)).toFixed(3)} SOL`;
-}
-
-function compactAddress(value: string) {
-  return `${value.slice(0, 4)}…${value.slice(-4)}`;
-}
-
 function thresholdProgress(draw: DrawAccount) {
   if (draw.stakerTvlSnapshot === 0n || draw.activationThresholdLamports === 0n) return 0;
-  return Math.min(100, Math.round(Number((draw.playerTvlLamports * 100n) / draw.activationThresholdLamports)));
+  return Math.min(
+    100,
+    Math.round(Number((draw.playerTvlLamports * 100n) / draw.activationThresholdLamports)),
+  );
 }
 
 function countdownLabel(draw: DrawAccount | undefined, now: number) {

@@ -7,7 +7,7 @@ Fate has no small protocol-level participant cap. It follows the scalable Solana
 ## Accounts
 
 | Account | Size | Approx. rent | Lifetime |
-|---|---:|---:|---|
+| --- | ---: | ---: | --- |
 | `Config` | 256 bytes | 0.00267264 SOL | Persistent |
 | `StakerVault` | 56 bytes | 0.00128064 SOL | Persistent custody and share totals |
 | `StakerPosition` | 112 bytes | 0.00167040 SOL | One per Staker wallet |

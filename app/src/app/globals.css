@@ -17,6 +17,28 @@
   --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
+body {
+  --privy-border-radius-sm: 0.45rem;
+  --privy-border-radius-md: 0.65rem;
+  --privy-border-radius-lg: 0.8rem;
+  --privy-color-background: #0b100f;
+  --privy-color-background-2: #111816;
+  --privy-color-background-3: #17221f;
+  --privy-color-foreground: #f4f2ed;
+  --privy-color-foreground-2: #a7aaa5;
+  --privy-color-foreground-3: #6d746f;
+  --privy-color-foreground-4: #4f5953;
+  --privy-color-foreground-accent: #d6ff74;
+  --privy-color-accent: #d6ff74;
+  --privy-color-accent-light: #e4ff9f;
+  --privy-color-accent-lightest: #f0ffc7;
+  --privy-color-accent-dark: #9fc24f;
+  --privy-color-accent-darkest: #6d8a2c;
+  --privy-color-success: #d6ff74;
+  --privy-color-error: #e9b98c;
+  --privy-color-error-light: #3a2a21;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -155,7 +177,9 @@ input:focus-visible {
   font-size: 0.72rem;
   font-weight: 700;
   justify-content: center;
-  transition: opacity 160ms ease, transform 160ms ease;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
 }
 
 .wallet-button {
@@ -171,11 +195,7 @@ input:focus-visible {
 }
 
 .wallet-connected {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  color: var(--muted);
-  font-size: 0.68rem;
+  position: relative;
 }
 
 .wallet-state {
@@ -183,7 +203,8 @@ input:focus-visible {
   font-size: 0.68rem;
 }
 
-.wallet-state::before {
+.wallet-state::before,
+.wallet-dot {
   display: inline-block;
   width: 0.35rem;
   height: 0.35rem;
@@ -192,6 +213,118 @@ input:focus-visible {
   background: var(--dim);
   content: "";
   vertical-align: 0.05em;
+}
+
+.wallet-menu {
+  position: relative;
+}
+
+.wallet-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 7.2rem;
+  justify-content: space-between;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(236, 241, 232, 0.04);
+  color: var(--ink);
+  cursor: pointer;
+  padding: 0.5rem 0.65rem 0.5rem 0.7rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease;
+}
+
+.wallet-trigger:hover,
+.wallet-trigger[aria-expanded="true"] {
+  border-color: rgba(214, 255, 116, 0.38);
+  background: var(--accent-soft);
+}
+
+.wallet-dot {
+  flex: 0 0 auto;
+  margin: 0;
+  border-radius: 50%;
+  background: var(--dim);
+}
+
+.wallet-dot.is-connected {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(214, 255, 116, 0.1);
+}
+
+.wallet-dot.is-wrong {
+  background: var(--warm);
+}
+
+.wallet-trigger-balance {
+  white-space: nowrap;
+}
+
+.wallet-chevron {
+  color: var(--dim);
+  font-size: 0.75rem;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 160ms ease;
+}
+
+.wallet-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.wallet-popover {
+  position: absolute;
+  top: calc(100% + 0.65rem);
+  right: 0;
+  z-index: 20;
+  width: min(16rem, calc(100vw - 2rem));
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: #121a17;
+  padding: 0.85rem;
+  box-shadow: 0 1.5rem 3rem rgba(0, 0, 0, 0.34);
+}
+
+.wallet-popover-address,
+.wallet-popover-balance {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.wallet-popover-address {
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  padding-bottom: 0.75rem;
+  font-size: 0.72rem;
+}
+
+.wallet-popover-label,
+.wallet-popover-balance > span {
+  color: var(--dim);
+  font-size: 0.67rem;
+}
+
+.wallet-popover-balance {
+  padding: 0.75rem 0 0.85rem;
+}
+
+.wallet-popover-balance strong {
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.wallet-network-warning {
+  margin: 0 0 0.75rem;
+  color: var(--warm);
+  font-size: 0.67rem;
+  line-height: 1.4;
 }
 
 .wallet-state.is-connected {
@@ -216,6 +349,31 @@ input:focus-visible {
 
 .wallet-balance {
   color: var(--muted);
+}
+
+.wallet-disconnect {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 0.55rem 0.7rem;
+  text-align: left;
+  transition:
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.wallet-disconnect:hover {
+  background: rgba(236, 241, 232, 0.05);
+  color: var(--ink);
+}
+
+.wallet-disconnect:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 
 .fate-workspace {
@@ -362,6 +520,10 @@ input:focus-visible {
 .mode-switch {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
   border-bottom: 1px solid var(--line);
 }
 

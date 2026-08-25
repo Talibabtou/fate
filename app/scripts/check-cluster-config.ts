@@ -26,6 +26,10 @@ const httpName = cluster === "localnet" ? "FATE_LOCALNET_RPC_URL" : "NEXT_PUBLIC
 const program = requiredValue(programName);
 const httpUrl = requiredValue(httpName);
 const wssUrl = cluster === "devnet" ? requiredValue("NEXT_PUBLIC_RPC_WSS_URL") : undefined;
+const fallbackUrls = (process.env.NEXT_PUBLIC_RPC_FALLBACK_HTTP_URLS ?? "")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
 
 try {
   address(program);
@@ -35,6 +39,9 @@ try {
 
 validateUrl(httpUrl, cluster === "localnet" ? ["http:"] : ["https:"]);
 if (wssUrl) validateUrl(wssUrl, ["wss:"]);
+for (const fallbackUrl of fallbackUrls) {
+  validateUrl(fallbackUrl, cluster === "localnet" ? ["http:"] : ["https:"]);
+}
 
 const hostname = new URL(httpUrl).hostname;
 if (cluster === "localnet" && !isLoopback(hostname)) {
@@ -42,6 +49,9 @@ if (cluster === "localnet" && !isLoopback(hostname)) {
 }
 if (cluster === "devnet" && isLoopback(hostname)) {
   throw new Error("devnet RPC must not point to localhost or a loopback IP address");
+}
+if (cluster === "devnet" && fallbackUrls.some((url) => isLoopback(new URL(url).hostname))) {
+  throw new Error("devnet fallback RPCs must not point to localhost or a loopback IP address");
 }
 
 console.log(
@@ -51,6 +61,7 @@ console.log(
     program,
     http: httpUrl,
     ...(wssUrl ? { wss: wssUrl } : {}),
+    ...(fallbackUrls.length ? { fallbacks: fallbackUrls } : {}),
   }),
 );
 

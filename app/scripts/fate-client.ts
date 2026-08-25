@@ -561,21 +561,25 @@ export async function cleanupInstruction(
   const data = new Uint8Array(9);
   data[0] = action === "close-draw" ? 14 : action === "close-player-position" ? 15 : 16;
   new DataView(data.buffer).setBigUint64(1, drawId, true);
-  if (action !== "close-draw" && !target) throw new Error(`${action} requires a target account`);
+  if (action === "close-draw") {
+    return {
+      programAddress,
+      accounts: [
+        { address: accounts.config, role: AccountRole.READONLY },
+        { address: accounts.draw, role: AccountRole.WRITABLE },
+        { address: rentPayer, role: AccountRole.WRITABLE },
+      ],
+      data,
+    };
+  }
+  if (!target) throw new Error(`${action} requires a target account`);
   return {
     programAddress,
-    accounts:
-      action === "close-draw"
-        ? [
-            { address: accounts.config, role: AccountRole.READONLY },
-            { address: accounts.draw, role: AccountRole.WRITABLE },
-            { address: rentPayer, role: AccountRole.WRITABLE },
-          ]
-        : [
-            { address: accounts.draw, role: AccountRole.WRITABLE },
-            { address: target as Address, role: AccountRole.WRITABLE },
-            { address: rentPayer, role: AccountRole.WRITABLE },
-          ],
+    accounts: [
+      { address: accounts.draw, role: AccountRole.WRITABLE },
+      { address: target, role: AccountRole.WRITABLE },
+      { address: rentPayer, role: AccountRole.WRITABLE },
+    ],
     data,
   };
 }

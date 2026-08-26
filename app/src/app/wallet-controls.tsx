@@ -1,7 +1,7 @@
 "use client";
 
 import { useConnectWallet } from "@privy-io/react-auth";
-import { useWallets } from "@privy-io/react-auth/solana";
+import { type ConnectedStandardSolanaWallet, useWallets } from "@privy-io/react-auth/solana";
 import { address } from "@solana/kit";
 import { useEffect, useRef, useState } from "react";
 import { readSolBalance } from "../lib/fate-browser";
@@ -16,8 +16,12 @@ export type WalletStatus =
 
 export function WalletControls({
   onStatusChange,
+  onAddressChange,
+  onWalletChange,
 }: {
   onStatusChange: (status: WalletStatus) => void;
+  onAddressChange: (address: string | null) => void;
+  onWalletChange: (wallet: ConnectedStandardSolanaWallet | null) => void;
 }) {
   const { connectWallet } = useConnectWallet();
   const { ready, wallets } = useWallets();
@@ -43,6 +47,11 @@ export function WalletControls({
           : "connected";
     onStatusChange(status);
   }, [chain, onExpectedNetwork, onStatusChange, ready, wallet]);
+
+  useEffect(() => {
+    onAddressChange(wallet?.address ?? null);
+    onWalletChange(wallet ?? null);
+  }, [onAddressChange, onWalletChange, wallet]);
 
   useEffect(() => {
     if (!menuOpen) return;

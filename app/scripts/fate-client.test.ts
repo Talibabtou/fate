@@ -74,7 +74,9 @@ test("decodes validated Steel config and draw layouts", () => {
     outstandingPlayerClaimLamports: 50_000_000n,
     protocolFeeLamports: 0n,
     stakerErosionLamports: 0n,
+    nextPlayerIndex: 0n,
     openPlayerPositions: 0n,
+    openWeightPages: 0n,
   });
 
   const positionData = new Uint8Array(PLAYER_POSITION_SIZE);
@@ -93,6 +95,8 @@ test("decodes validated Steel config and draw layouts", () => {
     committedLamports: 0n,
     leafIndex: 3n,
     claimableLamports: 0n,
+    claimed: false,
+    status: 0n,
   });
 });
 
@@ -127,7 +131,9 @@ test("keeper chooses only due permissionless transitions", () => {
     outstandingPlayerClaimLamports: 0n,
     protocolFeeLamports: 0n,
     stakerErosionLamports: 0n,
+    nextPlayerIndex: 0n,
     openPlayerPositions: 0n,
+    openWeightPages: 0n,
   };
   assert.equal(dueAction(config, draw, 1_000n), "activate");
   assert.equal(dueAction({ ...config, paused: true }, draw, 1_000n), null);

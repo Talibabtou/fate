@@ -182,6 +182,79 @@ input:focus-visible {
     transform 160ms ease;
 }
 
+.secondary-action {
+  width: 100%;
+  margin-top: 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0.65rem 0.8rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.secondary-action:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.transaction-review {
+  margin-top: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 0.8rem;
+}
+
+.transaction-review-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--line);
+  padding: 0.45rem 0;
+  color: var(--dim);
+  font-size: 0.68rem;
+}
+
+.transaction-review-row strong {
+  color: var(--ink);
+  font-size: 0.7rem;
+  text-align: right;
+}
+
+.transaction-review .terms-note {
+  margin: 0.7rem 0;
+  line-height: 1.45;
+}
+
+.review-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.review-confirm {
+  width: auto;
+  min-width: 9rem;
+  margin-top: 0;
+}
+
+.transaction-message {
+  margin: 0.7rem 0 0;
+  color: var(--accent);
+  font-size: 0.68rem;
+  line-height: 1.45;
+}
+
+.transaction-message.is-error,
+.error-toast {
+  color: var(--warm);
+}
+
 .wallet-button {
   background: var(--accent-soft);
   color: var(--accent);

@@ -234,6 +234,12 @@ The keeper is a small script, not a service platform. State transitions remain c
 
 The verified localnet audit on 2026-08-24 deployed program `BRBMYpjn9hCw9h5T7efxm1qAeHFi8JaGuubioTBQ13zU` with placeholder Entropy accounts and ended with `LOCALNET_AUDIT_PASS`. The fast-localnet artifact used a 30-second countdown and covered reinitialization rejection, pause authorization, paused deposits, funding refund/reset, funding withdrawal and threshold recalculation, direct vault donation, activation boundaries, frozen Staker exits, both deterministic settlement sides, double settlement rejection, Player claim and double-claim rejection, position/page cleanup, paused settlement, the last-Staker exit guard, final refund, final withdrawal, exact settlement accounting, and custody solvency. The 2026-08-24 keeper batch ended with `KEEPER_BATCH_PASS` after 12 draws and 48 fresh keeper processes, including recent-history rollover and cleanup convergence.
 
+## Devnet Deterministic Gate
+
+- [x] Deploy the normal five-minute `dev-randomness` artifact to devnet on 2026-08-25. Program `BRBMYpjn9hCw9h5T7efxm1qAeHFi8JaGuubioTBQ13zU` is upgradeable by deployer `2k3BVTXqooYoic2oVqoGLwTMozaKys3xueApBqLg8ZKD`; deployment signature: `8mqJmYd7PVjC4Lkyx69PzzdtFvYryEWcboSU7njLFSa5BnriNhMgMLyjx4Lvjui9GEACN7EDEWuEJM617FDERRm`.
+- [x] Initialize the devnet configuration with the deployer as fee treasury on 2026-08-25. Config `8kjYwbPYi7sGFtx8AFPr7QdwDugGgtug4o4YzPA3sEtR`, vault `31bYiKEJHvLcCH6tV2GJEZZRJqj9po8RU7CY57iA91Eo`, draw 0 `TZsgERXkk2HzUiMtmeC4ZaPMjwN3nNLGEm4vgr5pSfG`; signature: `3YYoccRgzkP8nv74pUeDy1WdwHxx8CZU6f16Jr3RffwVRHR3xpeiMJYbuGX3Liy54K69cxC46FuuP8d4oeXfoKTL`.
+- [ ] Fund the dedicated keeper and exercise manual Staker/Player flows. This artifact is deterministic and is not a mainnet fairness implementation.
+
 ## Next.js Foundation
 
 - [ ] Configure wallet-only Privy access for Solana external wallets with `toSolanaWalletConnectors({ shouldAutoConnect: true })`; do not create embedded wallets in v1.

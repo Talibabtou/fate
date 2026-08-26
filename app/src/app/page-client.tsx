@@ -1,8 +1,20 @@
 "use client";
 
+import type { ConnectedStandardSolanaWallet } from "@privy-io/react-auth/solana";
+import { address, type Instruction } from "@solana/kit";
 import { useEffect, useState } from "react";
-import { type DrawAccount, DrawPhase } from "../../scripts/fate-client";
+import {
+  claimPlayerInstruction,
+  claimStakeWithdrawalInstruction,
+  type DrawAccount,
+  DrawPhase,
+  depositPlayerInstruction,
+  depositStakeInstruction,
+  refundPlayerInstruction,
+  requestStakeWithdrawalInstruction,
+} from "../../scripts/fate-client";
 import { browserProgramAddress } from "../lib/fate-browser";
+import { executeFateTransaction, type FateTransactionState } from "../lib/fate-transactions";
 import { useFateSnapshot } from "./use-fate-snapshot";
 import { StaticWalletControls, WalletControls, type WalletStatus } from "./wallet-controls";
 
@@ -16,12 +28,26 @@ const phaseLabels: Record<number, string> = {
   [DrawPhase.Voided]: "Voided",
 };
 
+type ReviewAction =
+  | { kind: "deposit"; amountLamports: bigint; amountLabel: string }
+  | { kind: "refund"; amountLamports: bigint; amountLabel: string }
+  | { kind: "withdraw"; amountLamports: bigint; amountLabel: string }
+  | { kind: "claim"; amountLamports: bigint; amountLabel: string }
+  | { kind: "claim-withdrawal"; amountLamports: bigint; amountLabel: string };
+
 export function FatePage() {
-  const { snapshot, error, refreshing, refresh } = useFateSnapshot();
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [wallet, setWallet] = useState<ConnectedStandardSolanaWallet | null>(null);
+  const { snapshot, error, refreshing, refresh } = useFateSnapshot(
+    walletAddress ? address(walletAddress) : undefined,
+  );
   const [mode, setMode] = useState<"staker" | "player">("player");
   const [amount, setAmount] = useState("0.10");
   const [now, setNow] = useState(() => Date.now());
   const [walletStatus, setWalletStatus] = useState<WalletStatus>("unavailable");
+  const [review, setReview] = useState<ReviewAction | null>(null);
+  const [txState, setTxState] = useState<FateTransactionState | null>(null);
+  const [txMessage, setTxMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 1_000);
@@ -34,6 +60,154 @@ export function FatePage() {
   const progress = draw ? thresholdProgress(draw) : 0;
   const isPlayer = mode === "player";
   const hasPrivy = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID?.trim());
+  const transactionBusy =
+    txState === "simulating" || txState === "awaiting-signature" || txState === "submitted";
+
+  function beginPrimaryAction() {
+    setTxMessage(null);
+    setTxState(null);
+    if (!wallet || walletStatus !== "connected") {
+      setTxMessage("Connect a Solana wallet on the configured network first.");
+      return;
+    }
+    if (!snapshot || !draw) {
+      setTxMessage("Live Fate state is not available yet.");
+      return;
+    }
+    let amountLamports: bigint;
+    try {
+      amountLamports = parseSolAmount(amount);
+    } catch (nextError) {
+      setTxMessage(nextError instanceof Error ? nextError.message : "Enter a valid SOL amount.");
+      return;
+    }
+    const minimum = isPlayer ? 10_000_000n : 100_000_000n;
+    if (amountLamports < minimum) {
+      setTxMessage(
+        `Minimum ${isPlayer ? "Player" : "Staker"} deposit is ${isPlayer ? "0.01" : "0.10"} SOL.`,
+      );
+      return;
+    }
+    if (isPlayer) {
+      if (draw.phase !== DrawPhase.Funding && draw.phase !== DrawPhase.Activated) {
+        setTxMessage("Player deposits are closed for this draw.");
+        return;
+      }
+      if (
+        draw.phase === DrawPhase.Activated &&
+        draw.locksAt > 0n &&
+        BigInt(Math.floor(now / 1000)) >= draw.locksAt
+      ) {
+        setTxMessage("The countdown has reached its lock time.");
+        return;
+      }
+    } else if (
+      draw.phase !== DrawPhase.Funding ||
+      draw.firstPlayerAt > 0n ||
+      snapshot.config.paused
+    ) {
+      setTxMessage("New Staker deposits are open only during unfunded Funding.");
+      return;
+    }
+    setReview({ kind: "deposit", amountLamports, amountLabel: `${formatSol(amountLamports)} SOL` });
+  }
+
+  function beginSecondaryAction(kind: Exclude<ReviewAction["kind"], "deposit">) {
+    if (!snapshot || !draw || !wallet || walletStatus !== "connected") {
+      setTxMessage("Connect a Solana wallet and wait for live Fate state.");
+      return;
+    }
+    if (kind === "refund" && snapshot.playerPosition?.refundableLamports) {
+      setReview({
+        kind,
+        amountLamports: snapshot.playerPosition.refundableLamports,
+        amountLabel: `${formatSol(snapshot.playerPosition.refundableLamports)} SOL`,
+      });
+    } else if (kind === "claim" && snapshot.playerPosition?.claimableLamports) {
+      setReview({
+        kind,
+        amountLamports: snapshot.playerPosition.claimableLamports,
+        amountLabel: `${formatSol(snapshot.playerPosition.claimableLamports)} SOL`,
+      });
+    } else if (kind === "withdraw" && snapshot.stakerPosition?.activeShares) {
+      setReview({
+        kind,
+        amountLamports: snapshot.stakerPosition.activeShares,
+        amountLabel: `${snapshot.stakerPosition.activeShares} shares`,
+      });
+    } else if (
+      kind === "claim-withdrawal" &&
+      snapshot.stakerPosition?.claimableWithdrawalLamports
+    ) {
+      setReview({
+        kind,
+        amountLamports: snapshot.stakerPosition.claimableWithdrawalLamports,
+        amountLabel: `${formatSol(snapshot.stakerPosition.claimableWithdrawalLamports)} SOL`,
+      });
+    }
+  }
+
+  async function confirmReview() {
+    if (!review || !wallet || !snapshot || !draw) return;
+    const programAddress = browserProgramAddress();
+    if (!programAddress) {
+      setTxState("failed");
+      setTxMessage("NEXT_PUBLIC_FATE_PROGRAM_ID is not configured.");
+      return;
+    }
+    try {
+      const walletAddressValue = address(wallet.address);
+      let instruction: Instruction;
+      if (review.kind === "deposit") {
+        instruction = isPlayer
+          ? await depositPlayerInstruction(
+              programAddress,
+              walletAddressValue,
+              draw.id,
+              snapshot.playerPosition?.leafIndex ?? draw.nextPlayerIndex,
+              review.amountLamports,
+            )
+          : await depositStakeInstruction(
+              programAddress,
+              walletAddressValue,
+              draw.id,
+              snapshot.stakerPosition?.leafIndex ?? snapshot.vault.nextPositionIndex,
+              review.amountLamports,
+            );
+      } else if (review.kind === "refund") {
+        instruction = await refundPlayerInstruction(
+          programAddress,
+          walletAddressValue,
+          draw.id,
+          snapshot.playerPosition?.leafIndex ?? 0n,
+        );
+      } else if (review.kind === "withdraw") {
+        instruction = await requestStakeWithdrawalInstruction(
+          programAddress,
+          walletAddressValue,
+          draw.id,
+          snapshot.stakerPosition?.leafIndex ?? 0n,
+          review.amountLamports,
+        );
+      } else if (review.kind === "claim") {
+        instruction = await claimPlayerInstruction(programAddress, walletAddressValue, draw.id);
+      } else {
+        instruction = await claimStakeWithdrawalInstruction(programAddress, walletAddressValue);
+      }
+      const result = await executeFateTransaction({
+        instruction,
+        wallet,
+        onState: setTxState,
+      });
+      await refresh();
+      setReview(null);
+      setTxMessage(`Confirmed ${result.signature.slice(0, 8)}…`);
+    } catch (nextError) {
+      const message = nextError instanceof Error ? nextError.message : "Transaction failed";
+      setTxState(message.includes("timed out") ? "stale" : "failed");
+      setTxMessage(message);
+    }
+  }
 
   return (
     <main className="fate-page">
@@ -45,7 +219,11 @@ export function FatePage() {
         <div className="header-actions">
           <span className="network-mark">{networkLabel()}</span>
           {hasPrivy ? (
-            <WalletControls onStatusChange={setWalletStatus} />
+            <WalletControls
+              onAddressChange={setWalletAddress}
+              onStatusChange={setWalletStatus}
+              onWalletChange={setWallet}
+            />
           ) : (
             <StaticWalletControls />
           )}
@@ -128,12 +306,109 @@ export function FatePage() {
               <span>SOL</span>
             </label>
 
-            <button className="primary-action" disabled type="button">
-              {walletStatus === "connected"
-                ? "Deposit flow next"
-                : `Connect wallet to ${isPlayer ? "play" : "stake"}`}
+            <button
+              className="primary-action"
+              disabled={transactionBusy || walletStatus === "checking"}
+              onClick={beginPrimaryAction}
+              type="button"
+            >
+              {transactionBusy
+                ? transactionStateLabel(txState)
+                : walletStatus === "connected"
+                  ? `Deposit as ${isPlayer ? "Player" : "Staker"}`
+                  : `Connect wallet to ${isPlayer ? "play" : "stake"}`}
               <span aria-hidden="true">→</span>
             </button>
+
+            {isPlayer &&
+            snapshot?.playerPosition?.refundableLamports &&
+            draw?.phase === DrawPhase.Funding ? (
+              <button
+                className="secondary-action"
+                onClick={() => beginSecondaryAction("refund")}
+                type="button"
+              >
+                Refund {formatSol(snapshot.playerPosition.refundableLamports)} SOL
+              </button>
+            ) : null}
+            {isPlayer && snapshot?.playerPosition?.claimableLamports ? (
+              <button
+                className="secondary-action"
+                onClick={() => beginSecondaryAction("claim")}
+                type="button"
+              >
+                Claim {formatSol(snapshot.playerPosition.claimableLamports)} SOL
+              </button>
+            ) : null}
+            {!isPlayer &&
+            snapshot?.stakerPosition?.activeShares &&
+            draw?.phase === DrawPhase.Funding ? (
+              <button
+                className="secondary-action"
+                onClick={() => beginSecondaryAction("withdraw")}
+                type="button"
+              >
+                Exit all shares
+              </button>
+            ) : null}
+            {!isPlayer && snapshot?.stakerPosition?.claimableWithdrawalLamports ? (
+              <button
+                className="secondary-action"
+                onClick={() => beginSecondaryAction("claim-withdrawal")}
+                type="button"
+              >
+                Claim withdrawal
+              </button>
+            ) : null}
+
+            {review ? (
+              <div className="transaction-review" role="dialog" aria-label="Review transaction">
+                <div className="transaction-review-row">
+                  <span>Action</span>
+                  <strong>{reviewLabel(review.kind)}</strong>
+                </div>
+                <div className="transaction-review-row">
+                  <span>Amount</span>
+                  <strong>{review.amountLabel}</strong>
+                </div>
+                <div className="transaction-review-row">
+                  <span>Network / fee payer</span>
+                  <strong>
+                    {networkLabel()} · {wallet ? compactAddress(wallet.address) : "—"}
+                  </strong>
+                </div>
+                <p className="terms-note">
+                  Fate program: {browserProgramAddress()?.slice(0, 8) ?? "—"}… · wallet fee shown
+                  next.
+                </p>
+                <div className="review-actions">
+                  <button className="quiet-button" onClick={() => setReview(null)} type="button">
+                    Cancel
+                  </button>
+                  <button
+                    className="primary-action review-confirm"
+                    disabled={transactionBusy}
+                    onClick={() => void confirmReview()}
+                    type="button"
+                  >
+                    {transactionBusy ? transactionStateLabel(txState) : "Simulate & approve"}
+                    <span aria-hidden="true">→</span>
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {txMessage ? (
+              <p
+                className={
+                  txState === "failed" || txState === "stale"
+                    ? "transaction-message is-error"
+                    : "transaction-message"
+                }
+              >
+                {txMessage}
+              </p>
+            ) : null}
 
             <p className="minimum-note">
               Minimum {mode === "player" ? "Player" : "Staker"} deposit:{" "}
@@ -193,7 +468,7 @@ export function FatePage() {
       </section>
 
       <footer className="fate-footer">
-        <span>Devnet preview · read-only until wallet access is connected</span>
+        <span>{networkLabel()} preview · confirm every transaction in your wallet</span>
         <span className="mono">
           {browserProgramAddress()?.slice(0, 8) ?? "program not configured"}
         </span>
@@ -201,7 +476,7 @@ export function FatePage() {
 
       {error ? (
         <div className="error-toast">
-          Read-only preview: {error}. Configure the browser RPC and program ID to show live state.
+          Live state unavailable: {error}. Check the configured RPC and deployed program ID.
         </div>
       ) : null}
     </main>
@@ -258,6 +533,36 @@ function formatDuration(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   const remainder = seconds % 60;
   return `${minutes}m ${remainder.toString().padStart(2, "0")}s`;
+}
+
+function parseSolAmount(value: string) {
+  const normalized = value.trim();
+  if (!/^\d+(\.\d{1,9})?$/.test(normalized)) {
+    throw new Error("Enter a SOL amount with up to 9 decimal places.");
+  }
+  const [whole, fraction = ""] = normalized.split(".");
+  const lamports = BigInt(whole) * SOL + BigInt(fraction.padEnd(9, "0"));
+  if (lamports <= 0n) throw new Error("Enter an amount greater than zero.");
+  return lamports;
+}
+
+function reviewLabel(kind: ReviewAction["kind"]) {
+  if (kind === "deposit") return "Deposit";
+  if (kind === "refund") return "Refund Player position";
+  if (kind === "withdraw") return "Request Staker withdrawal";
+  if (kind === "claim") return "Claim Player winnings";
+  return "Claim Staker withdrawal";
+}
+
+function transactionStateLabel(state: FateTransactionState | null) {
+  if (state === "simulating") return "Simulating…";
+  if (state === "awaiting-signature") return "Approve in wallet…";
+  if (state === "submitted") return "Confirming…";
+  return "Working…";
+}
+
+function compactAddress(value: string) {
+  return `${value.slice(0, 4)}…${value.slice(-4)}`;
 }
 
 function networkLabel() {

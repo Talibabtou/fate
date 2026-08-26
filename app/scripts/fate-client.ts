@@ -79,11 +79,16 @@ export type DrawAccount = {
   outstandingPlayerClaimLamports: bigint;
   protocolFeeLamports: bigint;
   stakerErosionLamports: bigint;
+  nextPlayerIndex: bigint;
   openPlayerPositions: bigint;
+  openWeightPages: bigint;
 };
 
 export type StakerVaultAccount = {
+  activeAssetsLamports: bigint;
+  withdrawalLiabilityLamports: bigint;
   totalShares: bigint;
+  nextPositionIndex: bigint;
 };
 
 export type PlayerPositionAccount = {
@@ -95,12 +100,16 @@ export type PlayerPositionAccount = {
   committedLamports: bigint;
   leafIndex: bigint;
   claimableLamports: bigint;
+  claimed: boolean;
+  status: bigint;
 };
 
 export type StakerPositionAccount = {
   authority: Address;
   activeShares: bigint;
+  claimableWithdrawalLamports: bigint;
   leafIndex: bigint;
+  status: bigint;
 };
 
 export type WeightPageAccount = {
@@ -191,13 +200,20 @@ export function decodeDraw(data: Uint8Array): DrawAccount {
     outstandingPlayerClaimLamports: u64(data, 280),
     protocolFeeLamports: u64(data, 288),
     stakerErosionLamports: u64(data, 296),
+    nextPlayerIndex: u64(data, 320),
     openPlayerPositions: u64(data, 328),
+    openWeightPages: u64(data, 336),
   };
 }
 
 export function decodeStakerVault(data: Uint8Array): StakerVaultAccount {
   assertAccountData(data, STAKER_VAULT_SIZE, STAKER_VAULT_DISCRIMINATOR);
-  return { totalShares: u64(data, 24) };
+  return {
+    activeAssetsLamports: u64(data, 8),
+    withdrawalLiabilityLamports: u64(data, 16),
+    totalShares: u64(data, 24),
+    nextPositionIndex: u64(data, 48),
+  };
 }
 
 export function decodePlayerPosition(data: Uint8Array): PlayerPositionAccount {
@@ -211,6 +227,8 @@ export function decodePlayerPosition(data: Uint8Array): PlayerPositionAccount {
     committedLamports: u64(data, 104),
     leafIndex: u64(data, 128),
     claimableLamports: u64(data, 112),
+    claimed: u64(data, 120) !== 0n,
+    status: u64(data, 136),
   };
 }
 
@@ -230,7 +248,9 @@ export function decodeStakerPosition(data: Uint8Array): StakerPositionAccount {
   return {
     authority: getAddressDecoder().decode(data.slice(8, 40)),
     activeShares: u64(data, 72),
+    claimableWithdrawalLamports: u64(data, 80),
     leafIndex: u64(data, 96),
+    status: u64(data, 104),
   };
 }
 
@@ -437,6 +457,26 @@ export async function fateAddresses(programAddress: Address, drawId: bigint) {
   return { config, draw, vault, nextDraw };
 }
 
+export async function stakerPositionAddress(programAddress: Address, staker: Address) {
+  const [position] = await getProgramDerivedAddress({
+    programAddress,
+    seeds: [STAKER_POSITION_SEED, getAddressEncoder().encode(staker)],
+  });
+  return position;
+}
+
+export async function playerPositionAddress(
+  programAddress: Address,
+  drawId: bigint,
+  player: Address,
+) {
+  const [position] = await getProgramDerivedAddress({
+    programAddress,
+    seeds: [PLAYER_POSITION_SEED, drawIdSeed(drawId), getAddressEncoder().encode(player)],
+  });
+  return position;
+}
+
 export async function weightPageAddress(
   programAddress: Address,
   tree: Address,
@@ -487,6 +527,146 @@ async function weightPath(programAddress: Address, tree: Address, index: bigint)
       return weightPageAddress(programAddress, tree, level, prefix);
     }),
   );
+}
+
+function u64InstructionData(tag: number, value: bigint) {
+  if (value < 0n || value > 0xffff_ffff_ffff_ffffn)
+    throw new Error("instruction value out of range");
+  const data = new Uint8Array(9);
+  data[0] = tag;
+  new DataView(data.buffer).setBigUint64(1, value, true);
+  return data;
+}
+
+export async function depositStakeInstruction(
+  programAddress: Address,
+  staker: Address,
+  drawId: bigint,
+  leafIndex: bigint,
+  amountLamports: bigint,
+): Promise<Instruction> {
+  const accounts = await fateAddresses(programAddress, drawId);
+  const position = await stakerPositionAddress(programAddress, staker);
+  const path = await weightPath(programAddress, accounts.vault, leafIndex);
+  return {
+    programAddress,
+    accounts: [
+      { address: staker, role: AccountRole.WRITABLE_SIGNER },
+      { address: accounts.config, role: AccountRole.READONLY },
+      { address: accounts.draw, role: AccountRole.READONLY },
+      { address: accounts.vault, role: AccountRole.WRITABLE },
+      { address: position, role: AccountRole.WRITABLE },
+      { address: SYSTEM_PROGRAM, role: AccountRole.READONLY },
+      ...path.map((page) => ({ address: page, role: AccountRole.WRITABLE })),
+    ],
+    data: u64InstructionData(1, amountLamports),
+  };
+}
+
+export async function requestStakeWithdrawalInstruction(
+  programAddress: Address,
+  staker: Address,
+  drawId: bigint,
+  leafIndex: bigint,
+  shares: bigint,
+): Promise<Instruction> {
+  const accounts = await fateAddresses(programAddress, drawId);
+  const position = await stakerPositionAddress(programAddress, staker);
+  const path = await weightPath(programAddress, accounts.vault, leafIndex);
+  return {
+    programAddress,
+    accounts: [
+      { address: staker, role: AccountRole.WRITABLE_SIGNER },
+      { address: accounts.config, role: AccountRole.READONLY },
+      { address: accounts.draw, role: AccountRole.WRITABLE },
+      { address: accounts.vault, role: AccountRole.WRITABLE },
+      { address: position, role: AccountRole.WRITABLE },
+      ...path.map((page) => ({ address: page, role: AccountRole.WRITABLE })),
+    ],
+    data: u64InstructionData(2, shares),
+  };
+}
+
+export async function depositPlayerInstruction(
+  programAddress: Address,
+  player: Address,
+  drawId: bigint,
+  leafIndex: bigint,
+  amountLamports: bigint,
+): Promise<Instruction> {
+  const accounts = await fateAddresses(programAddress, drawId);
+  const position = await playerPositionAddress(programAddress, drawId, player);
+  const path = await weightPath(programAddress, accounts.draw, leafIndex);
+  return {
+    programAddress,
+    accounts: [
+      { address: player, role: AccountRole.WRITABLE_SIGNER },
+      { address: accounts.config, role: AccountRole.READONLY },
+      { address: accounts.draw, role: AccountRole.WRITABLE },
+      { address: position, role: AccountRole.WRITABLE },
+      { address: accounts.vault, role: AccountRole.READONLY },
+      { address: SYSTEM_PROGRAM, role: AccountRole.READONLY },
+      ...path.map((page) => ({ address: page, role: AccountRole.WRITABLE })),
+    ],
+    data: u64InstructionData(3, amountLamports),
+  };
+}
+
+export async function refundPlayerInstruction(
+  programAddress: Address,
+  player: Address,
+  drawId: bigint,
+  leafIndex: bigint,
+): Promise<Instruction> {
+  const accounts = await fateAddresses(programAddress, drawId);
+  const position = await playerPositionAddress(programAddress, drawId, player);
+  const path = await weightPath(programAddress, accounts.draw, leafIndex);
+  return {
+    programAddress,
+    accounts: [
+      { address: player, role: AccountRole.WRITABLE_SIGNER },
+      { address: accounts.config, role: AccountRole.READONLY },
+      { address: accounts.draw, role: AccountRole.WRITABLE },
+      { address: position, role: AccountRole.WRITABLE },
+      ...path.map((page) => ({ address: page, role: AccountRole.WRITABLE })),
+    ],
+    data: new Uint8Array([4]),
+  };
+}
+
+export async function claimPlayerInstruction(
+  programAddress: Address,
+  player: Address,
+  drawId: bigint,
+): Promise<Instruction> {
+  const accounts = await fateAddresses(programAddress, drawId);
+  const position = await playerPositionAddress(programAddress, drawId, player);
+  return {
+    programAddress,
+    accounts: [
+      { address: player, role: AccountRole.WRITABLE_SIGNER },
+      { address: accounts.draw, role: AccountRole.WRITABLE },
+      { address: position, role: AccountRole.WRITABLE },
+    ],
+    data: u64InstructionData(8, drawId),
+  };
+}
+
+export async function claimStakeWithdrawalInstruction(
+  programAddress: Address,
+  staker: Address,
+): Promise<Instruction> {
+  const accounts = await fateAddresses(programAddress, 0n);
+  const position = await stakerPositionAddress(programAddress, staker);
+  return {
+    programAddress,
+    accounts: [
+      { address: staker, role: AccountRole.WRITABLE_SIGNER },
+      { address: accounts.vault, role: AccountRole.WRITABLE },
+      { address: position, role: AccountRole.WRITABLE },
+    ],
+    data: new Uint8Array([9]),
+  };
 }
 
 export async function keeperInstruction(

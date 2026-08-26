@@ -8,7 +8,21 @@ import {
   type DrawAccount,
   decodeConfig,
   decodeDraw,
+  decodePlayerPosition,
+  decodeStakerPosition,
+  decodeStakerVault,
   fateAddresses,
+  PLAYER_POSITION_DISCRIMINATOR,
+  PLAYER_POSITION_SIZE,
+  type PlayerPositionAccount,
+  playerPositionAddress,
+  STAKER_POSITION_DISCRIMINATOR,
+  STAKER_POSITION_SIZE,
+  STAKER_VAULT_DISCRIMINATOR,
+  STAKER_VAULT_SIZE,
+  type StakerPositionAccount,
+  type StakerVaultAccount,
+  stakerPositionAddress,
 } from "../../scripts/fate-client.ts";
 
 const DEFAULT_LOCALNET_RPC = "http://127.0.0.1:8899";
@@ -28,9 +42,15 @@ type BrowserEnv = {
 export type FateSnapshot = {
   config: ConfigAccount;
   draw: DrawAccount;
+  vault: StakerVaultAccount;
+  stakerPosition: StakerPositionAccount | null;
+  playerPosition: PlayerPositionAccount | null;
   addresses: {
     config: Address;
     draw: Address;
+    vault: Address;
+    stakerPosition: Address | null;
+    playerPosition: Address | null;
   };
 };
 
@@ -85,7 +105,7 @@ export async function readSolBalance(walletAddress: Address) {
   });
 }
 
-export async function readFateSnapshot(): Promise<FateSnapshot> {
+export async function readFateSnapshot(walletAddress?: Address): Promise<FateSnapshot> {
   const programAddress = browserProgramAddress();
   if (!programAddress) throw new Error("NEXT_PUBLIC_FATE_PROGRAM_ID is not configured");
 
@@ -99,7 +119,10 @@ export async function readFateSnapshot(): Promise<FateSnapshot> {
       CONFIG_DISCRIMINATOR,
     );
     const config = decodeConfig(configData);
-    const { draw: currentDrawAddress } = await fateAddresses(programAddress, config.currentDrawId);
+    const { draw: currentDrawAddress, vault: vaultAddress } = await fateAddresses(
+      programAddress,
+      config.currentDrawId,
+    );
     const drawData = await readAccount(
       rpc,
       currentDrawAddress,
@@ -108,10 +131,47 @@ export async function readFateSnapshot(): Promise<FateSnapshot> {
       DRAW_DISCRIMINATOR,
     );
 
+    const [vaultData, stakerPositionAddressValue, playerPositionAddressValue] = await Promise.all([
+      readAccount(rpc, vaultAddress, programAddress, STAKER_VAULT_SIZE, STAKER_VAULT_DISCRIMINATOR),
+      walletAddress ? stakerPositionAddress(programAddress, walletAddress) : Promise.resolve(null),
+      walletAddress
+        ? playerPositionAddress(programAddress, config.currentDrawId, walletAddress)
+        : Promise.resolve(null),
+    ]);
+    const [stakerPositionData, playerPositionData] = await Promise.all([
+      stakerPositionAddressValue
+        ? readOptionalAccount(
+            rpc,
+            stakerPositionAddressValue,
+            programAddress,
+            STAKER_POSITION_SIZE,
+            STAKER_POSITION_DISCRIMINATOR,
+          )
+        : Promise.resolve(null),
+      playerPositionAddressValue
+        ? readOptionalAccount(
+            rpc,
+            playerPositionAddressValue,
+            programAddress,
+            PLAYER_POSITION_SIZE,
+            PLAYER_POSITION_DISCRIMINATOR,
+          )
+        : Promise.resolve(null),
+    ]);
+
     return {
       config,
       draw: decodeDraw(drawData),
-      addresses: { config: configAddress, draw: currentDrawAddress },
+      vault: decodeStakerVault(vaultData),
+      stakerPosition: stakerPositionData ? decodeStakerPosition(stakerPositionData) : null,
+      playerPosition: playerPositionData ? decodePlayerPosition(playerPositionData) : null,
+      addresses: {
+        config: configAddress,
+        draw: currentDrawAddress,
+        vault: vaultAddress,
+        stakerPosition: stakerPositionAddressValue,
+        playerPosition: playerPositionAddressValue,
+      },
     };
   });
 }
@@ -156,6 +216,29 @@ async function readAccount(
     .send();
   if (!response.value || response.value.owner !== programAddress) {
     throw new Error(`Account is missing or not owned by Fate: ${account}`);
+  }
+  const [encoded, encoding] = response.value.data;
+  if (encoding !== "base64") throw new Error("Unexpected account encoding");
+  const data = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+  if (data.length !== expectedSize || data[0] !== expectedDiscriminator) {
+    throw new Error(`Invalid Fate account layout: ${account}`);
+  }
+  return data;
+}
+
+async function readOptionalAccount(
+  rpc: ReturnType<typeof createSolanaRpc>,
+  account: Address,
+  programAddress: Address,
+  expectedSize: number,
+  expectedDiscriminator: number,
+) {
+  const response = await rpc
+    .getAccountInfo(account, { commitment: "confirmed", encoding: "base64" })
+    .send();
+  if (!response.value) return null;
+  if (response.value.owner !== programAddress) {
+    throw new Error(`Account is not owned by Fate: ${account}`);
   }
   const [encoded, encoding] = response.value.data;
   if (encoding !== "base64") throw new Error("Unexpected account encoding");

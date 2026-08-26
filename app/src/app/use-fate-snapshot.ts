@@ -7,25 +7,28 @@ const FALLBACK_POLL_MS = 5_000;
 const MAX_SUBSCRIPTION_RETRIES = 3;
 const SUBSCRIPTION_RETRY_MS = 2_000;
 
-export function useFateSnapshot() {
+export function useFateSnapshot(walletAddress?: Address) {
   const [snapshot, setSnapshot] = useState<FateSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [pollingFallback, setPollingFallback] = useState(false);
   const configAddress = snapshot?.addresses.config;
   const drawAddress = snapshot?.addresses.draw;
+  const vaultAddress = snapshot?.addresses.vault;
+  const stakerPositionAddress = snapshot?.addresses.stakerPosition;
+  const playerPositionAddress = snapshot?.addresses.playerPosition;
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      setSnapshot(await readFateSnapshot());
+      setSnapshot(await readFateSnapshot(walletAddress));
       setError(null);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to read Fate state");
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [walletAddress]);
 
   useEffect(() => {
     void refresh();
@@ -37,8 +40,14 @@ export function useFateSnapshot() {
   }, [pollingFallback, refresh]);
 
   useEffect(() => {
-    if (!configAddress || !drawAddress) return;
-    const accountAddresses: [Address, Address] = [configAddress, drawAddress];
+    if (!configAddress || !drawAddress || !vaultAddress) return;
+    const accountAddresses = [
+      configAddress,
+      drawAddress,
+      vaultAddress,
+      ...(stakerPositionAddress ? [stakerPositionAddress] : []),
+      ...(playerPositionAddress ? [playerPositionAddress] : []),
+    ] satisfies Address[];
     const controller = new AbortController();
     let active = true;
 
@@ -66,7 +75,14 @@ export function useFateSnapshot() {
       active = false;
       controller.abort();
     };
-  }, [configAddress, drawAddress, refresh]);
+  }, [
+    configAddress,
+    drawAddress,
+    playerPositionAddress,
+    refresh,
+    stakerPositionAddress,
+    vaultAddress,
+  ]);
 
   return { snapshot, error, refreshing, refresh };
 }

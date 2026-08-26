@@ -16,6 +16,7 @@ permissions:
 env:
   PNPM_VERSION: 11.23.0
   AGAVE_VERSION: 4.2.0
+  SBF_VERSION: 4.1.0
   STEEL_VERSION: 3.0.3
 
 jobs:
@@ -123,6 +124,14 @@ jobs:
 
       - name: Install Steel CLI
         run: cargo install steel-cli --version "$STEEL_VERSION" --locked
+
+      - name: Install SBF build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install cargo-build-sbf --version "$SBF_VERSION" --locked --force
+          cargo-build-sbf --version
+          cargo-test-sbf --version
 
       - name: Check Rust formatting
         run: cargo fmt --all -- --check

@@ -14,6 +14,7 @@ out/
 coverage/
 *.tsbuildinfo
 pnpm-debug.log*
+.pnpm-store/
 
 # Rust / Solana
 target/
@@ -27,10 +28,8 @@ __pycache__/
 .venv/
 
 # Reproducible simulation detail exports
-data-simulation/small/*.csv
-data-simulation/medium/*.csv
-data-simulation/large/*.csv
-data-simulation/parameter-study/*_runs.csv
+data-simulation/
+docs/
 
 # Editors
 .idea/

@@ -27,6 +27,8 @@ const envPath = resolve(import.meta.dirname, "../../.env.local");
 if (existsSync(envPath)) process.loadEnvFile(envPath);
 
 const RPC_URL = process.env.FATE_LOCALNET_RPC_URL?.trim() || "http://127.0.0.1:8899";
+const RPC_SUBSCRIPTIONS_URL =
+  process.env.FATE_LOCALNET_RPC_WSS_URL?.trim() || "ws://127.0.0.1:8900";
 const PROGRAM_ADDRESS = address(required("FATE_PROGRAM_ID"));
 const PAYER_KEYPAIR = required("FATE_PAYER_KEYPAIR");
 const STAKER_KEYPAIR = required("FATE_STAKER_KEYPAIR");
@@ -48,6 +50,7 @@ async function createFateClient(keypairPath: string) {
     .use(
       solanaRpc({
         rpcUrl: RPC_URL,
+        rpcSubscriptionsUrl: RPC_SUBSCRIPTIONS_URL,
         skipPreflight: false,
         transactionConfig: { estimateResourceLimits: true, version: 0 },
         maxConcurrency: 1,
@@ -62,6 +65,7 @@ async function createDualSignerClient(feePayerPath: string, authorityPath: strin
     .use(
       solanaRpc({
         rpcUrl: RPC_URL,
+        rpcSubscriptionsUrl: RPC_SUBSCRIPTIONS_URL,
         skipPreflight: false,
         transactionConfig: { estimateResourceLimits: true, version: 0 },
         maxConcurrency: 1,
@@ -591,13 +595,13 @@ async function run() {
 
   await send(
     stakerClient,
-    "deposit 1 SOL Staker leaf 0",
-    await depositStakeInstruction(staker, player, SOL, 0n, 0n),
+    "deposit 10 SOL Staker leaf 0",
+    await depositStakeInstruction(staker, player, 10n * SOL, 0n, 0n),
   );
   await send(
     payerClient,
-    "deposit 1 SOL Staker leaf 1",
-    await depositStakeInstruction(payer, player, SOL, 0n, 1n),
+    "deposit 10 SOL Staker leaf 1",
+    await depositStakeInstruction(payer, player, 10n * SOL, 0n, 1n),
   );
   await assertCustody(payerClient, 0n);
 
@@ -628,7 +632,7 @@ async function run() {
   );
   draw = await readDraw(payerClient, 0n);
   if (
-    draw.decoded.stakerTvlSnapshot !== 2n * SOL ||
+    draw.decoded.stakerTvlSnapshot !== 20n * SOL ||
     draw.decoded.playerTvlLamports !== 150_000_000n
   ) {
     throw new Error("multi-wallet funding state mismatch");
@@ -642,7 +646,7 @@ async function run() {
   );
   await send(
     payerClient,
-    "withdraw 0.5 SOL Staker during funding",
+    "withdraw 5 SOL Staker during funding",
     await requestWithdrawalInstruction(
       payer,
       player,
@@ -652,8 +656,8 @@ async function run() {
     ),
   );
   draw = await readDraw(payerClient, 0n);
-  if (draw.decoded.stakerTvlSnapshot !== 1_500_000_000n) {
-    throw new Error("funding withdrawal did not recalculate the Staker snapshot");
+  if (draw.decoded.stakerTvlSnapshot !== 15n * SOL || draw.decoded.phase !== 1) {
+    throw new Error("funding withdrawal did not recalculate and activate the draw");
   }
 
   const donationBefore = await readVault(payerClient);
@@ -672,9 +676,8 @@ async function run() {
   }
   await assertCustody(payerClient, 0n);
 
-  await send(payerClient, "activate draw 0", await phaseInstruction(0n, 5));
   draw = await readDraw(payerClient, 0n);
-  if (draw.decoded.phase !== 1) throw new Error("draw 0 did not activate");
+  if (draw.decoded.phase !== 1) throw new Error("Staker withdrawal did not activate draw 0");
   const player0Before = decodePlayerPosition(
     await accountData(
       playerClient,
@@ -760,7 +763,6 @@ async function run() {
     ),
   );
   await waitForLock(payerClient, 0n);
-  await send(payerClient, "lock draw 0", await phaseInstruction(0n, 11));
   const draw0Before = (await readDraw(payerClient, 0n)).decoded;
   const vault0Before = await readVault(payerClient);
   const treasury0Before = await balance(payerClient, (await readConfig(payerClient)).feeTreasury);
@@ -841,10 +843,9 @@ async function run() {
   );
   await send(
     payerClient,
-    "deposit 0.05 SOL Player draw 1",
-    await depositPlayerInstruction(payer, staker, 50_000_000n, 1n, 1n),
+    "deposit 0.06 SOL Player draw 1",
+    await depositPlayerInstruction(payer, staker, 60_000_000n, 1n, 1n),
   );
-  await send(payerClient, "activate draw 1", await phaseInstruction(1n, 5));
   await send(
     payerAuthorityClient,
     "pause during activated draw 1",
@@ -854,7 +855,6 @@ async function run() {
     ),
   );
   await waitForLock(payerClient, 1n);
-  await send(payerClient, "lock paused draw 1", await phaseInstruction(1n, 11));
   const draw1Before = (await readDraw(payerClient, 1n)).decoded;
   const vault1Before = await readVault(payerClient);
   const treasury1Before = await balance(payerClient, (await readConfig(payerClient)).feeTreasury);

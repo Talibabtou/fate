@@ -17,6 +17,8 @@ const envPath = resolve(import.meta.dirname, "../../.env.local");
 if (existsSync(envPath)) process.loadEnvFile(envPath);
 
 const RPC_URL = process.env.FATE_LOCALNET_RPC_URL?.trim() || "http://127.0.0.1:8899";
+const RPC_SUBSCRIPTIONS_URL =
+  process.env.FATE_LOCALNET_RPC_WSS_URL?.trim() || "ws://127.0.0.1:8900";
 const PROGRAM_ADDRESS = address(required("FATE_PROGRAM_ID"));
 const PAYER_KEYPAIR = required("FATE_PAYER_KEYPAIR");
 const STAKER_KEYPAIR = required("FATE_STAKER_KEYPAIR");
@@ -40,6 +42,7 @@ async function createFateClient(keypairPath: string) {
     .use(
       solanaRpc({
         rpcUrl: RPC_URL,
+        rpcSubscriptionsUrl: RPC_SUBSCRIPTIONS_URL,
         skipPreflight: false,
         transactionConfig: { estimateResourceLimits: true, version: 0 },
         maxConcurrency: 1,
@@ -201,6 +204,7 @@ async function runKeeperOnce(observeOnly = false) {
       ...process.env,
       KEEPER_CLUSTER: "localnet",
       KEEPER_RPC_HTTP_URL: RPC_URL,
+      KEEPER_RPC_WSS_URL: RPC_SUBSCRIPTIONS_URL,
       NEXT_PUBLIC_FATE_PROGRAM_ID: PROGRAM_ADDRESS,
       KEEPER_KEYPAIR_PATH: KEEPER_KEYPAIR,
       KEEPER_MIN_BALANCE_LAMPORTS: "0",
@@ -220,7 +224,11 @@ async function runKeeperOnce(observeOnly = false) {
     child.once("exit", (code) => resolve(code ?? 1));
   });
   if (exitCode !== 0) throw new Error(`keeper failed: ${stderr || stdout}`);
-  if (!stdout.includes("transition_confirmed") && !stdout.includes("action_due")) {
+  if (
+    !stdout.includes("transition_confirmed") &&
+    !stdout.includes("action_due") &&
+    !stdout.includes("no_action_due")
+  ) {
     throw new Error(`keeper made no observable progress: ${stdout}`);
   }
   return stdout;
@@ -252,8 +260,9 @@ async function run() {
       throw new Error(`expected draw ${expectedDraw}, got ${config.currentDrawId}`);
     }
     await send(playerClient, await depositPlayerInstruction(player, staker, expectedDraw));
+    const activated = await readDraw(payerClient, expectedDraw);
+    if (activated.phase !== 1) throw new Error(`draw ${expectedDraw} did not auto-activate`);
     observed.push(await runKeeperOnce(true));
-    observed.push(await runKeeperOnce());
     await waitForLock(payerClient, expectedDraw);
     observed.push(await runKeeperOnce());
     observed.push(await runKeeperOnce());
@@ -270,7 +279,7 @@ async function run() {
     throw new Error("recent draw rollover did not retain the latest ten draws");
   }
   await drainCleanup();
-  if (observed.length < 48) throw new Error("keeper restart coverage was incomplete");
+  if (observed.length < 36) throw new Error("keeper restart coverage was incomplete");
   console.log(
     JSON.stringify({
       KEEPER_BATCH_PASS: true,

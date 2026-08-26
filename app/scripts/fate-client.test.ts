@@ -143,7 +143,7 @@ test("keeper chooses only due permissionless transitions", () => {
       { ...draw, phase: DrawPhase.Activated, locksAt: 2_000n },
       2_000n,
     ),
-    "lock",
+    "settle",
   );
   assert.equal(dueAction(config, { ...draw, phase: DrawPhase.Locked }, 2_000n), "settle");
 });

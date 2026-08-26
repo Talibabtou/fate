@@ -30,7 +30,7 @@ const STAKER_POSITION_SEED = "staker-position";
 const DRAW_SEED = "draw";
 const PLAYER_POSITION_SEED = "player-position";
 const WEIGHT_PAGE_SEED = "weight-page";
-const WEIGHT_TREE_DEPTH = 8;
+export const WEIGHT_TREE_DEPTH = 8;
 
 const BPS_DENOMINATOR = 10_000n;
 const INITIAL_THRESHOLD_BPS = 100n;
@@ -294,7 +294,7 @@ export function dueAction(
       : null;
   }
   if (draw.phase === DrawPhase.Activated) {
-    return draw.locksAt > 0n && now >= draw.locksAt ? "lock" : null;
+    return draw.locksAt > 0n && now >= draw.locksAt ? "settle" : null;
   }
   return draw.phase === DrawPhase.Locked ? "settle" : null;
 }
@@ -669,7 +669,7 @@ export async function claimStakeWithdrawalInstruction(
   };
 }
 
-export async function keeperInstruction(
+export async function permissionlessProgressInstruction(
   action: KeeperAction,
   programAddress: Address,
   payerAddress: Address,
@@ -728,6 +728,29 @@ export async function keeperInstruction(
     ],
     data: new Uint8Array([12]),
   };
+}
+
+// Kept as a compatibility alias for localnet harnesses while the app and docs
+// use the product-facing permissionless progression terminology.
+export async function keeperInstruction(
+  action: KeeperAction,
+  programAddress: Address,
+  payerAddress: Address,
+  config: ConfigAccount,
+  participants?: {
+    player: Address;
+    playerIndex: bigint;
+    staker: Address;
+    stakerIndex: bigint;
+  },
+) {
+  return permissionlessProgressInstruction(
+    action,
+    programAddress,
+    payerAddress,
+    config,
+    participants,
+  );
 }
 
 export async function cleanupInstruction(

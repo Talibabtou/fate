@@ -25,8 +25,6 @@ import {
   stakerPositionAddress,
 } from "../../scripts/fate-client.ts";
 
-const DEFAULT_LOCALNET_RPC = "http://127.0.0.1:8899";
-
 export type BrowserRpcConfig = {
   primaryHttpUrl: string;
   fallbackHttpUrls: string[];
@@ -55,7 +53,8 @@ export type FateSnapshot = {
 };
 
 export function browserRpcConfig(env: BrowserEnv = process.env as BrowserEnv): BrowserRpcConfig {
-  const primaryHttpUrl = env.NEXT_PUBLIC_RPC_HTTP_URL?.trim() || DEFAULT_LOCALNET_RPC;
+  const primaryHttpUrl = env.NEXT_PUBLIC_RPC_HTTP_URL?.trim();
+  if (!primaryHttpUrl) throw new Error("NEXT_PUBLIC_RPC_HTTP_URL is not configured");
   const fallbackHttpUrls = (env.NEXT_PUBLIC_RPC_FALLBACK_HTTP_URLS ?? "")
     .split(",")
     .map((value) => value.trim())

@@ -25,6 +25,13 @@ test("browser RPC config keeps the primary first and removes duplicate fallbacks
   ]);
 });
 
+test("browser RPC config requires an environment-provided primary endpoint", () => {
+  assert.throws(
+    () => browserRpcConfig({}),
+    /NEXT_PUBLIC_RPC_HTTP_URL is not configured/,
+  );
+});
+
 test("browser RPC reads fail over in order and stop after the first success", async () => {
   const attempted: string[] = [];
   const value = await readWithRpcFallback(

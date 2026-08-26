@@ -15,7 +15,6 @@ permissions:
   pull-requests: read
 
 env:
-  PNPM_VERSION: 11.23.0
   AGAVE_VERSION: 4.2.0
   SBF_VERSION: 4.1.0
 
@@ -56,7 +55,6 @@ jobs:
       - uses: pnpm/action-setup@v4
         if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.app == 'true'
         with:
-          version: ${{ env.PNPM_VERSION }}
           run_install: false
 
       - uses: actions/setup-node@v4
@@ -129,7 +127,6 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: ${{ env.PNPM_VERSION }}
           run_install: false
 
       - uses: actions/setup-node@v4
@@ -197,7 +194,6 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: ${{ env.PNPM_VERSION }}
           run_install: false
 
       - uses: actions/setup-node@v4

@@ -4,19 +4,25 @@ import type { ConnectedStandardSolanaWallet } from "@privy-io/react-auth/solana"
 import { address, type Instruction } from "@solana/kit";
 import { useEffect, useState } from "react";
 import {
+  type ConfigAccount,
   claimPlayerInstruction,
   claimStakeWithdrawalInstruction,
   type DrawAccount,
   DrawPhase,
   depositPlayerInstruction,
   depositStakeInstruction,
+  dueAction,
+  permissionlessProgressInstruction,
   refundPlayerInstruction,
   requestStakeWithdrawalInstruction,
 } from "../../scripts/fate-client";
-import { browserProgramAddress } from "../lib/fate-browser";
+import { browserProgramAddress, readDevSettlementParticipants } from "../lib/fate-browser";
 import { executeFateTransaction, type FateTransactionState } from "../lib/fate-transactions";
+import { FateFooter } from "./fate-footer";
+import { FateMain, type ReviewAction } from "./fate-main";
+import { FateNavbar } from "./fate-navbar";
 import { useFateSnapshot } from "./use-fate-snapshot";
-import { StaticWalletControls, WalletControls, type WalletStatus } from "./wallet-controls";
+import type { WalletStatus } from "./wallet-controls";
 
 const SOL = 1_000_000_000n;
 const phaseLabels: Record<number, string> = {
@@ -27,13 +33,6 @@ const phaseLabels: Record<number, string> = {
   [DrawPhase.Settled]: "Settled",
   [DrawPhase.Voided]: "Voided",
 };
-
-type ReviewAction =
-  | { kind: "deposit"; amountLamports: bigint; amountLabel: string }
-  | { kind: "refund"; amountLamports: bigint; amountLabel: string }
-  | { kind: "withdraw"; amountLamports: bigint; amountLabel: string }
-  | { kind: "claim"; amountLamports: bigint; amountLabel: string }
-  | { kind: "claim-withdrawal"; amountLamports: bigint; amountLabel: string };
 
 export function FatePage() {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
@@ -58,8 +57,11 @@ export function FatePage() {
   const config = snapshot?.config;
   const phase = draw ? (phaseLabels[draw.phase] ?? "Unknown") : "Connecting";
   const progress = draw ? thresholdProgress(draw) : 0;
+  const progressAction =
+    config && draw ? availableProgressAction(config, draw, BigInt(Math.floor(now / 1000))) : null;
   const isPlayer = mode === "player";
   const hasPrivy = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID?.trim());
+  const programAddress = browserProgramAddress();
   const transactionBusy =
     txState === "simulating" || txState === "awaiting-signature" || txState === "submitted";
 
@@ -72,6 +74,15 @@ export function FatePage() {
     }
     if (!snapshot || !draw) {
       setTxMessage("Live Fate state is not available yet.");
+      return;
+    }
+    if (progressAction) {
+      setReview({
+        kind: "progress",
+        action: progressAction,
+        amountLabel: "No pool funds transferred",
+      });
+      setTxMessage("Advance the due draw transition before starting another action.");
       return;
     }
     let amountLamports: bigint;
@@ -112,9 +123,18 @@ export function FatePage() {
     setReview({ kind: "deposit", amountLamports, amountLabel: `${formatSol(amountLamports)} SOL` });
   }
 
-  function beginSecondaryAction(kind: Exclude<ReviewAction["kind"], "deposit">) {
+  function beginSecondaryAction(kind: Exclude<ReviewAction["kind"], "deposit" | "progress">) {
     if (!snapshot || !draw || !wallet || walletStatus !== "connected") {
       setTxMessage("Connect a Solana wallet and wait for live Fate state.");
+      return;
+    }
+    if (progressAction) {
+      setReview({
+        kind: "progress",
+        action: progressAction,
+        amountLabel: "No pool funds transferred",
+      });
+      setTxMessage("Advance the due draw transition before starting another action.");
       return;
     }
     if (kind === "refund" && snapshot.playerPosition?.refundableLamports) {
@@ -147,9 +167,27 @@ export function FatePage() {
     }
   }
 
+  function beginProgressAction() {
+    setTxMessage(null);
+    setTxState(null);
+    if (!wallet || walletStatus !== "connected" || !snapshot || !draw || !config) {
+      setTxMessage("Connect a Solana wallet and wait for live Fate state.");
+      return;
+    }
+    const action = availableProgressAction(config, draw, BigInt(Math.floor(Date.now() / 1000)));
+    if (action !== "activate" && action !== "settle") {
+      setTxMessage("This draw does not need a lifecycle transition yet.");
+      return;
+    }
+    setReview({
+      kind: "progress",
+      action,
+      amountLabel: "No pool funds transferred",
+    });
+  }
+
   async function confirmReview() {
     if (!review || !wallet || !snapshot || !draw) return;
-    const programAddress = browserProgramAddress();
     if (!programAddress) {
       setTxState("failed");
       setTxMessage("NEXT_PUBLIC_FATE_PROGRAM_ID is not configured.");
@@ -158,7 +196,17 @@ export function FatePage() {
     try {
       const walletAddressValue = address(wallet.address);
       let instruction: Instruction;
-      if (review.kind === "deposit") {
+      if (review.kind === "progress") {
+        const participants =
+          review.action === "settle" ? await readDevSettlementParticipants(draw) : undefined;
+        instruction = await permissionlessProgressInstruction(
+          review.action,
+          programAddress,
+          walletAddressValue,
+          snapshot.config,
+          participants,
+        );
+      } else if (review.kind === "deposit") {
         instruction = isPlayer
           ? await depositPlayerInstruction(
               programAddress,
@@ -211,303 +259,50 @@ export function FatePage() {
 
   return (
     <main className="fate-page">
-      <header className="fate-header">
-        <div className="brand-lockup">
-          <span className="display-font brand-name">Fate</span>
-          <span className="brand-note">one draw at a time</span>
-        </div>
-        <div className="header-actions">
-          <span className="network-mark">{networkLabel()}</span>
-          {hasPrivy ? (
-            <WalletControls
-              onAddressChange={setWalletAddress}
-              onStatusChange={setWalletStatus}
-              onWalletChange={setWallet}
-            />
-          ) : (
-            <StaticWalletControls />
-          )}
-        </div>
-      </header>
-
-      <section className="fate-workspace" aria-label="Current Fate draw">
-        <div className="draw-heading">
-          <div>
-            <p className="eyebrow">Current draw</p>
-            <h1 className="display-font draw-title">
-              #{draw?.id.toString() ?? "—"} <span>{phase}</span>
-            </h1>
-          </div>
-          <button className="quiet-button" onClick={() => void refresh()} type="button">
-            <span className={refreshing ? "refresh-mark is-spinning" : "refresh-mark"}>↻</span>
-            {refreshing ? "Reading" : "Refresh"}
-          </button>
-        </div>
-
-        <div className="draw-context">
-          <div className="context-topline">
-            <div>
-              <p className="context-label">Player threshold</p>
-              <p className="context-value">
-                {draw
-                  ? `${formatSol(draw.playerTvlLamports)} / ${formatSol(draw.activationThresholdLamports)} SOL`
-                  : "—"}
-              </p>
-            </div>
-            <div className="context-state">
-              <span className="live-dot" />
-              <span>{draw ? `${progress}% filled` : "Awaiting RPC"}</span>
-            </div>
-          </div>
-          <div
-            aria-label="Player threshold progress"
-            aria-valuemax={100}
-            aria-valuemin={0}
-            aria-valuenow={progress}
-            className="progress-track"
-            role="progressbar"
-          >
-            <div className="progress-value" style={{ width: `${progress}%` }} />
-          </div>
-          <div className="context-meta">
-            <span>{countdownLabel(draw, now)}</span>
-            <span>
-              {draw ? `Staker TVL ${formatSol(draw.stakerTvlSnapshot)} SOL` : "Staker TVL —"}
-            </span>
-          </div>
-        </div>
-
-        <div className="action-layout">
-          <div className="action-intro">
-            <p className="eyebrow">Your move</p>
-            <h2 className="display-font action-title">Choose a side.</h2>
-            <p className="action-copy">
-              One deposit enters the current draw. The terms stay visible before signing.
-            </p>
-          </div>
-
-          <div className="action-form">
-            <fieldset className="mode-switch">
-              <legend className="sr-only">Choose a side</legend>
-              <ModeButton active={!isPlayer} label="Staker" onClick={() => setMode("staker")} />
-              <ModeButton active={isPlayer} label="Player" onClick={() => setMode("player")} />
-            </fieldset>
-
-            <label className="amount-field">
-              <span className="sr-only">{mode} amount in SOL</span>
-              <input
-                aria-label={`${mode} amount in SOL`}
-                inputMode="decimal"
-                min="0"
-                onChange={(event) => setAmount(event.target.value)}
-                placeholder="0.10"
-                value={amount}
-              />
-              <span>SOL</span>
-            </label>
-
-            <button
-              className="primary-action"
-              disabled={transactionBusy || walletStatus === "checking"}
-              onClick={beginPrimaryAction}
-              type="button"
-            >
-              {transactionBusy
-                ? transactionStateLabel(txState)
-                : walletStatus === "connected"
-                  ? `Deposit as ${isPlayer ? "Player" : "Staker"}`
-                  : `Connect wallet to ${isPlayer ? "play" : "stake"}`}
-              <span aria-hidden="true">→</span>
-            </button>
-
-            {isPlayer &&
-            snapshot?.playerPosition?.refundableLamports &&
-            draw?.phase === DrawPhase.Funding ? (
-              <button
-                className="secondary-action"
-                onClick={() => beginSecondaryAction("refund")}
-                type="button"
-              >
-                Refund {formatSol(snapshot.playerPosition.refundableLamports)} SOL
-              </button>
-            ) : null}
-            {isPlayer && snapshot?.playerPosition?.claimableLamports ? (
-              <button
-                className="secondary-action"
-                onClick={() => beginSecondaryAction("claim")}
-                type="button"
-              >
-                Claim {formatSol(snapshot.playerPosition.claimableLamports)} SOL
-              </button>
-            ) : null}
-            {!isPlayer &&
-            snapshot?.stakerPosition?.activeShares &&
-            draw?.phase === DrawPhase.Funding ? (
-              <button
-                className="secondary-action"
-                onClick={() => beginSecondaryAction("withdraw")}
-                type="button"
-              >
-                Exit all shares
-              </button>
-            ) : null}
-            {!isPlayer && snapshot?.stakerPosition?.claimableWithdrawalLamports ? (
-              <button
-                className="secondary-action"
-                onClick={() => beginSecondaryAction("claim-withdrawal")}
-                type="button"
-              >
-                Claim withdrawal
-              </button>
-            ) : null}
-
-            {review ? (
-              <div className="transaction-review" role="dialog" aria-label="Review transaction">
-                <div className="transaction-review-row">
-                  <span>Action</span>
-                  <strong>{reviewLabel(review.kind)}</strong>
-                </div>
-                <div className="transaction-review-row">
-                  <span>Amount</span>
-                  <strong>{review.amountLabel}</strong>
-                </div>
-                <div className="transaction-review-row">
-                  <span>Network / fee payer</span>
-                  <strong>
-                    {networkLabel()} · {wallet ? compactAddress(wallet.address) : "—"}
-                  </strong>
-                </div>
-                <p className="terms-note">
-                  Fate program: {browserProgramAddress()?.slice(0, 8) ?? "—"}… · wallet fee shown
-                  next.
-                </p>
-                <div className="review-actions">
-                  <button className="quiet-button" onClick={() => setReview(null)} type="button">
-                    Cancel
-                  </button>
-                  <button
-                    className="primary-action review-confirm"
-                    disabled={transactionBusy}
-                    onClick={() => void confirmReview()}
-                    type="button"
-                  >
-                    {transactionBusy ? transactionStateLabel(txState) : "Simulate & approve"}
-                    <span aria-hidden="true">→</span>
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            {txMessage ? (
-              <p
-                className={
-                  txState === "failed" || txState === "stale"
-                    ? "transaction-message is-error"
-                    : "transaction-message"
-                }
-              >
-                {txMessage}
-              </p>
-            ) : null}
-
-            <p className="minimum-note">
-              Minimum {mode === "player" ? "Player" : "Staker"} deposit:{" "}
-              {mode === "player" ? "0.01" : "0.10"} SOL
-            </p>
-          </div>
-        </div>
-
-        <div className="details-stack">
-          <details className="info-toggle">
-            <summary>
-              <span>View draw terms</span>
-              <span className="toggle-icon" aria-hidden="true">
-                +
-              </span>
-            </summary>
-            <div className="terms-grid">
-              <Term label="Side odds" value="Player 90% · Staker 10%" />
-              <Term
-                label="Player max loss"
-                value={draw ? `${formatSol(draw.playerTvlLamports)} SOL` : "—"}
-              />
-              <Term label="Player fee" value="5% of profit" />
-              <Term label="Staker exposure" value="Principal can erode" />
-              <p className="terms-note">
-                The selected side is fixed first, then one wallet wins by its stored weight. Pending
-                Player deposits can be refunded only during funding.
-              </p>
-            </div>
-          </details>
-
-          <details className="info-toggle">
-            <summary>
-              <span>Recent draws & disclosures</span>
-              <span className="toggle-icon" aria-hidden="true">
-                +
-              </span>
-            </summary>
-            <div className="history-row">
-              <div>
-                <span className="context-label">Recent settled draws</span>
-                <p>
-                  {config?.recentDrawIds.length
-                    ? config.recentDrawIds
-                        .slice(0, 5)
-                        .map((id) => `#${id}`)
-                        .join(" · ")
-                    : "No settled draws yet"}
-                </p>
-              </div>
-              <p className="terms-note">
-                Native SOL only. Fate is not a guaranteed-principal product.
-              </p>
-            </div>
-          </details>
-        </div>
-      </section>
-
-      <footer className="fate-footer">
-        <span>{networkLabel()} preview · confirm every transaction in your wallet</span>
-        <span className="mono">
-          {browserProgramAddress()?.slice(0, 8) ?? "program not configured"}
-        </span>
-      </footer>
-
+      <FateNavbar
+        hasPrivy={hasPrivy}
+        network={networkLabel()}
+        onAddressChange={setWalletAddress}
+        onStatusChange={setWalletStatus}
+        onWalletChange={setWallet}
+      />
+      <FateMain
+        amount={amount}
+        config={config}
+        draw={draw}
+        isPlayer={isPlayer}
+        mode={mode}
+        network={networkLabel()}
+        now={now}
+        onAmountChange={setAmount}
+        onCancelReview={() => setReview(null)}
+        onConfirmReview={() => void confirmReview()}
+        onModeChange={setMode}
+        onPrimaryAction={beginPrimaryAction}
+        onProgressAction={beginProgressAction}
+        onRefresh={() => void refresh()}
+        onSecondaryAction={beginSecondaryAction}
+        phase={phase}
+        playerPosition={snapshot?.playerPosition ?? null}
+        programAddress={programAddress}
+        progress={progress}
+        progressAction={progressAction}
+        refreshing={refreshing}
+        review={review}
+        stakerPosition={snapshot?.stakerPosition ?? null}
+        transactionBusy={transactionBusy}
+        txMessage={txMessage}
+        txState={txState}
+        wallet={wallet}
+        walletStatus={walletStatus}
+      />
+      <FateFooter network={networkLabel()} programAddress={programAddress} />
       {error ? (
         <div className="error-toast">
           Live state unavailable: {error}. Check the configured RPC and deployed program ID.
         </div>
       ) : null}
     </main>
-  );
-}
-function Term({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="term-row">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function ModeButton({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      className={active ? "mode-button is-active" : "mode-button"}
-      onClick={onClick}
-      type="button"
-    >
-      {label}
-    </button>
   );
 }
 
@@ -523,16 +318,12 @@ function thresholdProgress(draw: DrawAccount) {
   );
 }
 
-function countdownLabel(draw: DrawAccount | undefined, now: number) {
-  if (!draw || draw.phase !== DrawPhase.Activated || draw.locksAt <= 0n) return "Funding open";
-  const remaining = Number(draw.locksAt) - Math.floor(now / 1000);
-  return remaining > 0 ? `${formatDuration(remaining)} remaining` : "Lock due";
-}
-
-function formatDuration(seconds: number) {
-  const minutes = Math.floor(seconds / 60);
-  const remainder = seconds % 60;
-  return `${minutes}m ${remainder.toString().padStart(2, "0")}s`;
+function availableProgressAction(config: ConfigAccount, draw: DrawAccount, now: bigint) {
+  const action = dueAction(config, draw, now);
+  if (action === "settle" && !["localnet", "devnet"].includes(networkLabel().toLowerCase())) {
+    return null;
+  }
+  return action === "activate" || action === "settle" ? action : null;
 }
 
 function parseSolAmount(value: string) {
@@ -544,25 +335,6 @@ function parseSolAmount(value: string) {
   const lamports = BigInt(whole) * SOL + BigInt(fraction.padEnd(9, "0"));
   if (lamports <= 0n) throw new Error("Enter an amount greater than zero.");
   return lamports;
-}
-
-function reviewLabel(kind: ReviewAction["kind"]) {
-  if (kind === "deposit") return "Deposit";
-  if (kind === "refund") return "Refund Player position";
-  if (kind === "withdraw") return "Request Staker withdrawal";
-  if (kind === "claim") return "Claim Player winnings";
-  return "Claim Staker withdrawal";
-}
-
-function transactionStateLabel(state: FateTransactionState | null) {
-  if (state === "simulating") return "Simulating…";
-  if (state === "awaiting-signature") return "Approve in wallet…";
-  if (state === "submitted") return "Confirming…";
-  return "Working…";
-}
-
-function compactAddress(value: string) {
-  return `${value.slice(0, 4)}…${value.slice(-4)}`;
 }
 
 function networkLabel() {

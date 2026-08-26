@@ -9,7 +9,7 @@
     "app:build": "pnpm --dir app build",
     "app:dev": "pnpm --dir app dev",
     "app:test": "pnpm --dir app test",
-    "check": "pnpm biome:check && pnpm app:check && pnpm app:build",
+    "check": "pnpm biome:check && pnpm app:check && pnpm app:test",
     "devnet:config": "node --experimental-strip-types app/scripts/check-cluster-config.ts devnet",
     "devnet:init": "node --experimental-strip-types app/scripts/devnet-initialize.ts",
     "devnet:preflight": "node --experimental-strip-types app/scripts/check-devnet-readiness.ts",

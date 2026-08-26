@@ -1,7 +1,7 @@
 {
   "name": "fate",
   "private": true,
-  "packageManager": "pnpm@11.23.0",
+  "packageManager": "pnpm@11.24.0",
   "scripts": {
     "biome:check": "biome check .",
     "biome:fix": "biome check --write .",
@@ -10,18 +10,12 @@
     "app:dev": "pnpm --dir app dev",
     "app:test": "pnpm --dir app test",
     "check": "pnpm biome:check && pnpm app:check && pnpm app:build",
-    "ci": "pnpm check && pnpm program:build:localnet",
     "devnet:config": "node --experimental-strip-types app/scripts/check-cluster-config.ts devnet",
     "devnet:init": "node --experimental-strip-types app/scripts/devnet-initialize.ts",
     "devnet:preflight": "node --experimental-strip-types app/scripts/check-devnet-readiness.ts",
-    "format": "biome format --write .",
-    "format:check": "biome format .",
     "keeper": "pnpm --dir app keeper",
     "keeper:batch:test": "node --experimental-strip-types app/scripts/keeper-batch-e2e.ts",
     "keeper:once": "pnpm --dir app keeper:once",
-    "keeper:check": "pnpm --dir app check",
-    "keeper:test": "pnpm --dir app test",
-    "lint": "biome lint .",
     "localnet:config": "node --experimental-strip-types app/scripts/check-cluster-config.ts localnet",
     "localnet:e2e": "node --experimental-strip-types app/scripts/localnet-e2e.ts",
     "program:build:localnet": "NO_DNA=1 cargo build-sbf --features dev-randomness,fast-localnet -- --package fate-program",
@@ -34,8 +28,5 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.10"
-  },
-  "dependencies": {
-    "@privy-io/react-auth": "^3.37.4"
   }
 }

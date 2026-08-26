@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <title>Fate</title>
   <rect width="64" height="64" rx="18" fill="#17221f" />
-  <path d="M18 16h28v7H25v9h17v7H25v9h21v7H18z" fill="#d6ff74" />
+  <path d="M20 13h27v8H29v10h16v8H29v12h-9V13z" fill="#d6ff74" />
 </svg>

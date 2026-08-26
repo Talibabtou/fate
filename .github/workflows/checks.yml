@@ -12,6 +12,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 env:
   PNPM_VERSION: 11.23.0
@@ -23,29 +24,60 @@ jobs:
     name: Biome, app, and program build
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    outputs:
+      app_changed: ${{ steps.changes.outputs.app == 'true' || github.event_name == 'workflow_dispatch' }}
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Detect changed areas
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            app:
+              - 'app/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'biome.json'
+              - '.github/workflows/**'
+            program:
+              - 'api/**'
+              - 'program/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - 'rustfmt.toml'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - '.github/workflows/**'
+
       - uses: pnpm/action-setup@v4
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.app == 'true'
         with:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
 
       - uses: actions/setup-node@v4
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.app == 'true'
         with:
           node-version: 22
           cache: pnpm
 
       - uses: dtolnay/rust-toolchain@stable
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.program == 'true'
 
       - name: Install JavaScript dependencies
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.app == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Check and build app
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.app == 'true'
         run: pnpm check
 
       - name: Install Agave toolchain
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.program == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -53,6 +85,7 @@ jobs:
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
 
       - name: Install SBF build tools
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.program == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -61,14 +94,15 @@ jobs:
           cargo-test-sbf --version
 
       - name: Build program
-        run: pnpm program:build:localnet
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.program == 'true'
+        run: NO_DNA=1 cargo build-sbf --features dev-randomness,fast-localnet -- --package fate-program
 
   deploy-preview:
     name: Deploy preview to Vercel
     needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    if: needs.checks.outputs.app_changed == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
 
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -136,7 +170,7 @@ jobs:
     needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: needs.checks.outputs.app_changed == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}

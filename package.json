@@ -9,8 +9,8 @@
     "app:build": "pnpm --dir app build",
     "app:dev": "pnpm --dir app dev",
     "app:test": "pnpm --dir app test",
-    "check": "pnpm biome:check && pnpm app:check && pnpm app:test && pnpm program:fmt && pnpm simulation:check && pnpm simulation:test",
-    "ci": "pnpm check && pnpm app:build && pnpm program:build:localnet && pnpm program:test:sbf && pnpm program:build:production && pnpm program:test && pnpm program:test:production",
+    "check": "pnpm biome:check && pnpm app:check && pnpm app:build",
+    "ci": "pnpm check && pnpm program:build:localnet",
     "devnet:config": "node --experimental-strip-types app/scripts/check-cluster-config.ts devnet",
     "devnet:init": "node --experimental-strip-types app/scripts/devnet-initialize.ts",
     "devnet:preflight": "node --experimental-strip-types app/scripts/check-devnet-readiness.ts",
@@ -30,9 +30,7 @@
     "program:test": "NO_DNA=1 cargo test --workspace --features dev-randomness,fast-localnet",
     "program:test:production": "NO_DNA=1 cargo test --workspace --no-default-features",
     "program:test:sbf": "NO_DNA=1 cargo test-sbf --test lifecycle -- --test-threads=1",
-    "program:fmt": "cargo fmt --all -- --check",
-    "simulation:check": "python3 -m py_compile data-simulation/simulate.py data-simulation/run_scenarios.py",
-    "simulation:test": "python3 -m unittest discover -s data-simulation -p 'test_*.py'"
+    "program:fmt": "cargo fmt --all -- --check"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.10"

@@ -27,7 +27,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 
-# Reproducible simulation detail exports
+# Local simulation exports are not part of the repository.
 data-simulation/
 docs/
 

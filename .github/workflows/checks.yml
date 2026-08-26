@@ -112,6 +112,19 @@ jobs:
       - name: Pull Vercel preview environment
         run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN" --cwd app
 
+      - name: Verify preview browser configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          env_file="app/.vercel/.env.preview.local"
+          test -f "$env_file"
+          for name in NEXT_PUBLIC_SOLANA_NETWORK NEXT_PUBLIC_FATE_PROGRAM_ID NEXT_PUBLIC_RPC_HTTP_URL NEXT_PUBLIC_RPC_WSS_URL NEXT_PUBLIC_PRIVY_APP_ID; do
+            if ! grep -qE "^${name}=[^[:space:]]" "$env_file"; then
+              echo "::error::Missing or empty Vercel preview variable: $name"
+              exit 1
+            fi
+          done
+
       - name: Build Vercel output
         run: vercel build --token="$VERCEL_TOKEN" --cwd app
 
@@ -166,6 +179,19 @@ jobs:
 
       - name: Pull Vercel production environment
         run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN" --cwd app
+
+      - name: Verify production browser configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          env_file="app/.vercel/.env.production.local"
+          test -f "$env_file"
+          for name in NEXT_PUBLIC_SOLANA_NETWORK NEXT_PUBLIC_FATE_PROGRAM_ID NEXT_PUBLIC_RPC_HTTP_URL NEXT_PUBLIC_RPC_WSS_URL NEXT_PUBLIC_PRIVY_APP_ID; do
+            if ! grep -qE "^${name}=[^[:space:]]" "$env_file"; then
+              echo "::error::Missing or empty Vercel production variable: $name"
+              exit 1
+            fi
+          done
 
       - name: Build Vercel output
         run: vercel build --prod --token="$VERCEL_TOKEN" --cwd app

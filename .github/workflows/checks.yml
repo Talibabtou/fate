@@ -17,10 +17,11 @@ permissions:
 env:
   AGAVE_VERSION: 4.2.0
   SBF_VERSION: 4.1.0
+  VERCEL_CLI_VERSION: 59.5.0
 
 jobs:
   checks:
-    name: Biome, app, and program build
+    name: Biome, app checks, and conditional program build
     runs-on: ubuntu-latest
     timeout-minutes: 45
     outputs:
@@ -48,8 +49,6 @@ jobs:
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
               - 'rustfmt.toml'
-              - 'package.json'
-              - 'pnpm-lock.yaml'
               - '.github/workflows/**'
 
       - uses: pnpm/action-setup@v4
@@ -74,20 +73,135 @@ jobs:
         if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.app == 'true'
         run: pnpm check
 
+      - name: Build app for fork pull requests
+        if: github.event_name == 'workflow_dispatch' || (steps.changes.outputs.app == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
+        run: pnpm app:build
+
+      - name: Require Vercel secrets
+        if: steps.changes.outputs.app == 'true' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing GitHub secret: $name"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Install Vercel CLI
+        if: (steps.changes.outputs.app == 'true') && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+        run: npm install --global vercel@${{ env.VERCEL_CLI_VERSION }}
+
+      - name: Pull Vercel preview environment
+        if: steps.changes.outputs.app == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+
+      - name: Pull Vercel production environment
+        if: steps.changes.outputs.app == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      - name: Verify preview browser configuration
+        if: steps.changes.outputs.app == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          env_file=".vercel/.env.preview.local"
+          test -f "$env_file"
+          for name in NEXT_PUBLIC_SOLANA_NETWORK NEXT_PUBLIC_FATE_PROGRAM_ID NEXT_PUBLIC_RPC_HTTP_URL NEXT_PUBLIC_RPC_WSS_URL NEXT_PUBLIC_PRIVY_APP_ID; do
+            if ! grep -qE "^${name}=[^[:space:]]" "$env_file"; then
+              echo "::error::Missing or empty Vercel preview variable: $name"
+              exit 1
+            fi
+          done
+
+      - name: Verify production browser configuration
+        if: steps.changes.outputs.app == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          set -euo pipefail
+          env_file=".vercel/.env.production.local"
+          test -f "$env_file"
+          for name in NEXT_PUBLIC_SOLANA_NETWORK NEXT_PUBLIC_FATE_PROGRAM_ID NEXT_PUBLIC_RPC_HTTP_URL NEXT_PUBLIC_RPC_WSS_URL NEXT_PUBLIC_PRIVY_APP_ID; do
+            if ! grep -qE "^${name}=[^[:space:]]" "$env_file"; then
+              echo "::error::Missing or empty Vercel production variable: $name"
+              exit 1
+            fi
+          done
+
+      - name: Build Vercel preview output
+        if: steps.changes.outputs.app == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel build --token="$VERCEL_TOKEN"
+
+      - name: Build Vercel production output
+        if: steps.changes.outputs.app == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+
+      - name: Upload Vercel output
+        if: steps.changes.outputs.app == 'true' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+        uses: actions/upload-artifact@v4
+        with:
+          name: vercel-output
+          path: .vercel/output
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Cache Agave toolchain
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.program == 'true'
+        id: agave-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/solana/install
+          key: ${{ runner.os }}-agave-${{ env.AGAVE_VERSION }}
+
       - name: Install Agave toolchain
         if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.program == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          sh -c "$(curl -sSfL \"https://release.anza.xyz/v${AGAVE_VERSION}/install\")"
+          if [[ "${{ steps.agave-cache.outputs.cache-hit }}" != "true" ]]; then
+            sh -c "$(curl -sSfL \"https://release.anza.xyz/v${AGAVE_VERSION}/install\")"
+          fi
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: Cache SBF build tools
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.program == 'true'
+        id: sbf-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-build-sbf
+            ~/.cargo/bin/cargo-test-sbf
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-sbf-${{ env.SBF_VERSION }}-${{ hashFiles('rust-toolchain.toml') }}
 
       - name: Install SBF build tools
         if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.program == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          cargo install cargo-build-sbf --version "$SBF_VERSION" --locked --force
+          if [[ "${{ steps.sbf-cache.outputs.cache-hit }}" != "true" ]]; then
+            cargo install cargo-build-sbf --version "$SBF_VERSION" --locked
+          fi
           cargo-build-sbf --version
           cargo-test-sbf --version
 
@@ -108,10 +222,6 @@ jobs:
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Require Vercel secrets
         shell: bash
         run: |
@@ -125,39 +235,18 @@ jobs:
           done
           exit "$missing"
 
-      - uses: pnpm/action-setup@v4
-        with:
-          run_install: false
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-
-      - name: Install JavaScript dependencies
-        run: pnpm install --frozen-lockfile
 
       - name: Install Vercel CLI
-        run: npm install --global vercel@latest
+        run: npm install --global vercel@${{ env.VERCEL_CLI_VERSION }}
 
-      - name: Pull Vercel preview environment
-        run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
-
-      - name: Verify preview browser configuration
-        shell: bash
-        run: |
-          set -euo pipefail
-          env_file=".vercel/.env.preview.local"
-          test -f "$env_file"
-          for name in NEXT_PUBLIC_SOLANA_NETWORK NEXT_PUBLIC_FATE_PROGRAM_ID NEXT_PUBLIC_RPC_HTTP_URL NEXT_PUBLIC_RPC_WSS_URL NEXT_PUBLIC_PRIVY_APP_ID; do
-            if ! grep -qE "^${name}=[^[:space:]]" "$env_file"; then
-              echo "::error::Missing or empty Vercel preview variable: $name"
-              exit 1
-            fi
-          done
-
-      - name: Build Vercel output
-        run: vercel build --token="$VERCEL_TOKEN"
+      - name: Download Vercel output
+        uses: actions/download-artifact@v5
+        with:
+          name: vercel-output
+          path: .vercel/output
 
       - name: Deploy prebuilt preview
         run: vercel deploy --prebuilt --token="$VERCEL_TOKEN"
@@ -175,10 +264,6 @@ jobs:
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Require Vercel secrets
         shell: bash
         run: |
@@ -192,39 +277,18 @@ jobs:
           done
           exit "$missing"
 
-      - uses: pnpm/action-setup@v4
-        with:
-          run_install: false
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-
-      - name: Install JavaScript dependencies
-        run: pnpm install --frozen-lockfile
 
       - name: Install Vercel CLI
-        run: npm install --global vercel@latest
+        run: npm install --global vercel@${{ env.VERCEL_CLI_VERSION }}
 
-      - name: Pull Vercel production environment
-        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
-
-      - name: Verify production browser configuration
-        shell: bash
-        run: |
-          set -euo pipefail
-          env_file=".vercel/.env.production.local"
-          test -f "$env_file"
-          for name in NEXT_PUBLIC_SOLANA_NETWORK NEXT_PUBLIC_FATE_PROGRAM_ID NEXT_PUBLIC_RPC_HTTP_URL NEXT_PUBLIC_RPC_WSS_URL NEXT_PUBLIC_PRIVY_APP_ID; do
-            if ! grep -qE "^${name}=[^[:space:]]" "$env_file"; then
-              echo "::error::Missing or empty Vercel production variable: $name"
-              exit 1
-            fi
-          done
-
-      - name: Build Vercel output
-        run: vercel build --prod --token="$VERCEL_TOKEN"
+      - name: Download Vercel output
+        uses: actions/download-artifact@v5
+        with:
+          name: vercel-output
+          path: .vercel/output
 
       - name: Deploy prebuilt production
         run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"

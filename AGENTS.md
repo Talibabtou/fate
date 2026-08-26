@@ -12,7 +12,7 @@ Read these files before changing protocol economics, simulation assumptions, acc
 
 Treat the Rust program, tests, and simulator as implementation evidence. If they disagree with a document, do not guess which economic rule wins: report the mismatch, use an explicitly checked decision in `BUILD_PLAN.md` as the interim product authority, and update the affected docs when the code changes.
 
-Before a non-trivial task, check the installed skills and read the skill that matches the work. Use the repository's context guide in `docs/CONTEXT_EFFICIENT_CODEX_GUIDE.md`: inspect status, map files with `rg`, read narrow ranges, keep a short evidence ledger, and run the smallest relevant check first.
+Before a non-trivial task, check the installed skills and read the skill that matches the work. Inspect status, map files with `rg`, read narrow ranges, keep a short evidence ledger, and run the smallest relevant check first.
 
 ## Product vocabulary
 
@@ -55,6 +55,8 @@ FUNDING -> ACTIVATED -> deadline -> settlement -> next FUNDING
 - Do not silently make a user's wallet pay for unrelated work. If an app composes lifecycle work with a user action, show the phase change, accounts, fee payer, and possible outcome before signature; use a separate permissionless transaction when account requirements or risk make composition unclear.
 - Existing `app/scripts/keeper.ts` and keeper batch files are development or compatibility tooling while this migration is unfinished. Do not add new keeper authority, custody, reward, or production dependency without an explicit decision.
 - Pause may stop deposits and activation only. It must never block refunds, Staker withdrawals, claims, locked-draw settlement, or a tested terminal recovery path.
+
+See `docs/LIFECYCLE.md` for the user-triggered progression and caller-paid fallback flow.
 
 ## Solana program rules
 
@@ -110,4 +112,4 @@ PYTHONPYCACHEPREFIX=/tmp/fate-pycache python3 \
   data-simulation/run_scenarios.py --data-dir data-simulation
 ```
 
-Use the commands documented in `package.json`, `docs/BUILD_PLAN.md`, and `docs/DEVNET.md` for Rust, app, localnet, and devnet checks; do not invent a deployment command when the documented one exists.
+Use the commands documented in `package.json` and `docs/BUILD_PLAN.md` for Rust, app, localnet, and devnet checks; do not invent a deployment command when the documented one exists.

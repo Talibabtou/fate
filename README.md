@@ -166,16 +166,7 @@ Across the five seeds, profitable Player rates ranged from `21.08%` to `23.19%` 
 
 Staker return per draw is game PnL, not APY. Active-funding cadence begins with the first Player deposit and excludes idle time before anyone enters. Actual daily returns and revenue will therefore be lower whenever the protocol waits for its first Player.
 
-Detailed outputs:
-
-```text
-data-simulation/small/
-data-simulation/medium/
-data-simulation/large/
-data-simulation/scenario_comparison.csv
-data-simulation/scenario_seed_comparison.csv
-data-simulation/scenario_analysis.md
-```
+The simulator writes detailed CSV and report output under `data-simulation/`; those generated files stay local and are not part of the repository.
 
 Run all scenarios:
 
@@ -209,4 +200,4 @@ python3 data-simulation/run_scenarios.py --data-dir data-simulation
 
 The simulator covers the accepted economics. The deterministic Steel custody core now uses per-wallet PDAs and verified weighted paths, and covers funding, deposits, refunds, activation, countdown locking, both settlement sides, claims, fees, erosion, permissionless progression, and bounded rent recovery. Localnet and devnet use a compile-time deterministic settlement fixture; mainnet Entropy integration remains intentionally deferred.
 
-Before mainnet parameters are immutable, testnet usage must replace synthetic arrival assumptions with observed data. The build still needs maximum-capacity benchmarks, broader adversarial and invariant tests, a complete keeper-driven localnet/devnet run, the Next.js app, and the verified mainnet Entropy integration with terminal outage recovery.
+Before mainnet parameters are immutable, testnet usage must replace synthetic arrival assumptions with observed data. The build still needs maximum-capacity benchmarks, broader adversarial and invariant tests, a complete user-driven localnet/devnet run with permissionless fallbacks, the Next.js app, and the verified mainnet Entropy integration with terminal outage recovery.

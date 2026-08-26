@@ -27,9 +27,9 @@ __pycache__/
 .pytest_cache/
 .venv/
 
-# Local simulation exports are not part of the repository.
+# Keep simulator source and authored documentation in the repository. Generated
+# scenario exports and reports stay local.
 data-simulation/
-docs/
 
 # Editors
 .idea/

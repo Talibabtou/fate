@@ -1,150 +1,104 @@
-# Agent Notes for Fate
+# Fate agent instructions
 
-These instructions apply to `workspace/fate`. Fate is independent from ORE. Do not import ORE product mechanics or mention ORE in Fate product copy.
+These instructions apply to `workspace/fate`. Keep changes inside this repository unless the task explicitly requires reading an upstream reference. Fate is independent from ORE; ORE code and mechanics are reference material only.
 
-## Read First
+## Before changing behavior
 
-Before changing protocol behavior, simulation assumptions, program state, or transaction UX, read:
+Read these files before changing protocol economics, simulation assumptions, account state, lifecycle behavior, or transaction UX:
 
-1. `README.md` for the public product model and latest simulation results.
-2. `docs/BUILD_PLAN.md` for settled implementation choices, open tasks, and release gates.
+1. `README.md` for the public product model and current simulation results.
+2. `docs/BUILD_PLAN.md` for settled decisions, open work, and release gates.
 3. `data-simulation/simulate.py` for executable economic behavior.
 
-When these files disagree, checked decisions in `docs/BUILD_PLAN.md` take precedence until the simulator and README are updated. Do not silently resolve an economic conflict in code.
+Treat the Rust program, tests, and simulator as implementation evidence. If they disagree with a document, do not guess which economic rule wins: report the mismatch, use an explicitly checked decision in `BUILD_PLAN.md` as the interim product authority, and update the affected docs when the code changes.
 
-## Skills
+Before a non-trivial task, check the installed skills and read the skill that matches the work. Use the repository's context guide in `docs/CONTEXT_EFFICIENT_CODEX_GUIDE.md`: inspect status, map files with `rg`, read narrow ranges, keep a short evidence ledger, and run the smallest relevant check first.
 
-Installed skills, and when to reach for them. Before starting any non-trivial task, ask which of these applies — the right skill is usually cheaper than doing the work unaided.
-
-**Solana work** (program, client, RPC, testing, deployment):
-
-- `solana-kit` — `@solana/kit` client, RPC, subscriptions, transaction construction. Use for all app-side chain code.
-- `solana-kit-migration` — porting `@solana/web3.js` v1 patterns to `@solana/kit`.
-- `solana-agent-kit` — only if agent-driven onchain actions are ever in scope. Not currently part of Fate.
-
-Fate's explicit Steel direction overrides any framework recommendation these skills make (they lean Anchor). Fate uses Steel; do not let a skill talk you into Anchor.
-
-**Token efficiency** — this project runs on metered credit, so treat token cost as a real constraint:
-
-- `caveman` — ultra-compressed output mode, ~65% fewer output tokens with technical accuracy kept. Use for long mechanical passes: bulk refactors, repetitive edits, status sweeps, anything where prose polish is wasted. Do not use for user-facing copy, docs, or the README.
-- `caveman-compress` — compress an existing context or document instead of re-reading it whole.
-- `caveman-explore` / `caveman-discover` — cheap codebase orientation. Prefer these over unaided broad `grep`/`Read` sweeps when mapping unfamiliar areas.
-- `cavecrew` — parallel multi-agent fan-out for work that genuinely splits.
-
-**Code quality**:
-
-- `ponytail` — lazy-senior-dev review. Run it before accepting new code: it hunts overkill abstraction, duplicated logic, and unnecessary work. The best code is the code never written. Especially valuable on the Rust program, where a needless abstraction costs compute units and rent.
-- `caveman-evidence-review` — verify claims against actual code instead of trusting a summary.
-
-**Writing** (README, docs, product copy, commit messages):
-
-- `anti-ai-slop-writing` / `humanizer` — strip AI writing tells. Use for anything a human reads: README, `docs/`, PR descriptions, UI copy.
-- `caveman-commit` — commit messages.
-
-Never let a skill's default style override the terminology rules below. Staker and Player are non-negotiable in all output.
-
-## Terminology
+## Product vocabulary
 
 - The product is **Fate**.
 - The persistent side is **Staker**.
 - The at-risk side is **Player**.
-- Never reintroduce the legacy risk-side terminology in code, data, or copy.
-- Legacy internal simulator names such as `safe_*` and `risk_*` may remain until a deliberate internal refactor. Public fields, filenames, reports, and UI must say Staker and Player.
+- Public code, data, reports, UI, and docs must use Staker and Player. Existing simulator internals such as `safe_*` and `risk_*` may remain until a deliberate internal rename; do not expose them as product terminology.
 
-## Settled Mechanism
+## Settled protocol model
 
 - Native SOL only.
-- One draw selects the Player side with 90% probability or the Staker side with 10% probability.
-- Every settled draw has exactly one selected wallet.
-- Deposits from one wallet aggregate before odds and settlement are calculated.
-- Staker winner odds are proportional to active vault shares.
-- Player winner odds use the sum of each deposit multiplied by its boost at deposit time.
-- Staker-side payout: 30% to one weighted Staker, 65% to all active Stakers through vault share value, and 5% to the protocol.
-- Player-side erosion: `min(0.07% * Staker TVL, 7% * Player TVL)`.
-- Player-side fee base: losing Player deposits plus Staker erosion. The winner's own deposit is excluded.
-- Player claim: winner deposit plus 95% of losing Player deposits and erosion.
-- Player winnings are credited to an on-chain claim balance.
-- Staker winnings roll automatically into Staker vault value.
-- Staker SOL is inert. Fate does not stake it with validators or deploy it into DeFi.
-- Do not claim fixed APY or guaranteed principal. Staker balances can fall through erosion.
+- Each draw chooses Player with 90% probability or Staker with 10% probability, then chooses exactly one wallet on the selected side.
+- Deposits from one wallet aggregate before odds and settlement.
+- Staker winner weight is active vault shares. Player winner weight is the sum of each deposit multiplied by its boost at deposit time.
+- A Staker-side win pays 30% of Player TVL to one weighted Staker, 65% to active Stakers through vault value, and 5% to the protocol.
+- A Player-side win erodes `min(0.07% * Staker TVL, 7% * Player TVL)`. The fee base is losing Player deposits plus erosion; the winner's own deposit is excluded. The winner claims its deposit plus 95% of that fee base.
+- Minimum deposits are `0.01 SOL` for Players and `0.1 SOL` for Stakers.
+- Player winnings use an on-chain claim balance. Staker winnings roll into vault value, with an exact liability when a jackpot is too small to represent safely as shares.
+- Staker SOL remains inert. Never describe it as yield-bearing, risk-free, guaranteed principal, or fixed APY.
+- Economic math is integer-only on-chain, uses `u128` intermediates, rounds down, and assigns every remainder to the protocol treasury.
 
-## Funding And Timing
+## Lifecycle and liveness
 
-- The first Player deposit begins `FUNDING` and snapshots active Staker TVL.
-- Initial activation target: 1% of the current Staker TVL snapshot.
-- The target falls by 10% every 10 minutes.
-- Activation floor: the larger of `0.1 SOL` and `0.1% of the current Staker TVL snapshot`.
-- Minimum Player deposit: `0.01 SOL`.
-- Minimum Staker deposit: `0.1 SOL`.
-- Funding has no expiry.
-- A pending Player may refund their entire position during `FUNDING`.
-- If every Player refunds, reset the funding clock and snapshot.
-- Stakers may withdraw immediately during `FUNDING`. Each withdrawal recalculates the Staker snapshot, floor, and live activation threshold. The final active Staker cannot exit while Player funds are present.
-- New Staker deposits close when the first Player enters and reopen with the next draw.
-- Once the target is met, enter `ACTIVATED` and start a five-minute countdown.
-- Staker positions freeze from `ACTIVATED` through settlement; this bounded lock is required so winner weights cannot change after commitment.
-- Player deposits remain open during the countdown, commit immediately, and receive `1.00x` weight.
-- Early funding deposits can receive up to `1.50x` Player winner weight. The boost affects only the winner within the Player side, never the fixed 90% side probability.
-- At countdown end, lock deposits, obtain randomness, settle once, and open the next draw.
+The normal lifecycle is:
 
-The `0.01 SOL` minimum can remain below the activation floor because no capital is trapped during `FUNDING`: Stakers can withdraw and Players can refund. The UI must not imply that activation is guaranteed at a particular time.
+```text
+FUNDING -> ACTIVATED -> deadline -> settlement -> next FUNDING
+```
 
-## Program Direction
+`LOCKED`, `AWAITING_RANDOMNESS`, and `VOIDED` remain valid states where the selected randomness and recovery design needs them.
 
-- Use Steel, following `repos/steel` and `repos/steel-book`. Do not default to Anchor.
-- Follow the Steel workspace shape: root Cargo workspace, `api/`, `program/`, and integration tests.
-- Use `repos/entropy` for randomness and study ORE's existing Entropy integration as code reference only.
-- Entropy calls itself work in progress. Fate does not depend on it on localnet or devnet. Before mainnet, verify the deployed program and pinned source, provider/API availability, commit supply, cost, slot timing, timeout, and recovery.
-- Use one Fate-owned Entropy variable. Do not share ORE's variable.
-- Derive separate side and winner samples with domain-separated hashes containing the draw ID.
-- Use unbiased integer selection. Do not use unchecked modulo selection when it introduces bias.
-- Economic math is integer-only with `u128` intermediates. Round division down and account for every remaining lamport.
-- Parameters are constants in v1. Changing them requires a reviewed program upgrade.
-- Development authority and treasury begin under one securely stored owner wallet.
-- Use a different low-balance hot key for the keeper.
-- Every timed transition is permissionless. The keeper is only a backup caller.
-- A narrow pause may stop deposits and activation, but never refunds, withdrawals, claims, or settlement of a locked draw.
+- The first Player deposit starts `FUNDING` and snapshots active Staker TVL. The initial target is 1% of that snapshot, decaying by 10% every 10 minutes, with a floor of `max(0.1 SOL, 0.1% of the snapshot)`.
+- Funding has no expiry or automatic cancellation. The UI must not imply that activation is guaranteed at a particular time.
+- Player deposits are refundable until activation. If all Players refund, reset the funding timestamp and snapshot. Stakers can withdraw during `FUNDING`; recalculate the snapshot and threshold, and prevent the final active Staker from leaving while Player funds remain.
+- New Staker deposits close after the first Player enters and reopen with the next draw.
+- A Player deposit that reaches the live threshold, or a Staker withdrawal that lowers the threshold to current Player TVL, should activate the draw in that same user transaction. The existing program already follows this rule.
+- At activation, freeze Staker positions, commit pending Players, start the five-minute countdown, and accept countdown Player deposits at 1.00x weight. Early funding deposits may receive up to 1.50x Player-side winner weight.
+- After the deadline, any signer must be able to settle the draw once. No administrator, fee payer, RPC provider, or keeper may choose, discard, or reroll a valid result.
+- Do not make a dedicated keeper a product dependency. Prefer user activity as the normal trigger for due lifecycle work, including atomic activation where the user action changes eligibility. Keep explicit permissionless fallback instructions for time-only activation, deadline settlement, randomness recovery, and cleanup so inactivity cannot trap funds. Fallbacks must be idempotent and safe when another caller wins a race.
+- Do not silently make a user's wallet pay for unrelated work. If an app composes lifecycle work with a user action, show the phase change, accounts, fee payer, and possible outcome before signature; use a separate permissionless transaction when account requirements or risk make composition unclear.
+- Existing `app/scripts/keeper.ts` and keeper batch files are development or compatibility tooling while this migration is unfinished. Do not add new keeper authority, custody, reward, or production dependency without an explicit decision.
+- Pause may stop deposits and activation only. It must never block refunds, Staker withdrawals, claims, locked-draw settlement, or a tested terminal recovery path.
 
-## Capacity
+## Solana program rules
 
-- Never put participant arrays in one shared account or scan every participant during settlement.
-- Use one PDA per Staker wallet, one PDA per Player wallet/draw, and the authenticated radix-16 weighted index.
-- Each operation touches one wallet and an eight-page path; activation and lock are constant-time, and settlement verifies one path per side.
-- The `u32` leaf namespace supports 4,294,967,296 positions per tree. Treat this as address-space exhaustion, not a product participant cap.
+- Use Steel and follow the local patterns in `repos/steel` and `repos/steel-book`; do not introduce Anchor for Fate. Do not modify upstream repositories.
+- Keep participant state in one PDA per Staker wallet and one PDA per Player wallet/draw. Use the authenticated radix-16 weighted index; never store a shared participant array or scan every participant during activation or settlement.
+- Preserve the `u32` leaf namespace and eight-page path assumptions unless measured limits and the build plan change.
+- Derive PDAs from fixed prefixes, explicit IDs, and canonical bumps. Validate every account's owner, exact data length, discriminator, signer and writable role, PDA seeds, stored relationships, and expected program IDs. Reject duplicate mutable accounts, reinitialization, substituted CPI programs, stale randomness, fake account types, and unchecked narrowing casts.
+- Treat accounts, instruction bytes, RPC data, sysvars, and logs as hostile input. Use runtime sysvars rather than caller-supplied fake sysvar accounts when the instruction has no such account surface.
+- Check custody solvency and expected lamport deltas at the end of every value-moving instruction. Account for rent, direct lamport donations, liabilities, rounding dust, refunds, withdrawals, claims, and all cleanup recipients.
+- Never commit Player funds before activation, spend Staker principal outside explicit erosion or withdrawal, settle twice, or claim twice.
+- Every timed transition is permissionless. The keeper, if used in development, is only a fee payer and caller; it is never an authority or source of truth.
 
-## Web App
+## Randomness
 
-- Build one mobile-first page under `app/` using Next.js App Router, TypeScript, Tailwind CSS, pnpm, and Biome.
-- Use Privy for Solana-only external wallet connection.
-- Use `@solana/kit` by default. Add `@solana/web3.js` only when a required Privy or Entropy path cannot accept Kit transactions.
-- Use an environment-selected primary HTTP/WSS RPC pair with ordered read fallbacks.
-- Keep transaction submission and confirmation on the same RPC endpoint.
-- Derive authoritative phases from confirmed on-chain state. Browser timers only display expected time.
-- No notifications or analytics in v1.
-- The page needs wallet/network controls, live phase, threshold, countdown, Staker/Player mode, deposit and exit actions, odds, exact payout estimate, fee, maximum loss, claim state, ten recent results, and compact disclosures.
-- Keep the visual direction calm, serious, dark, and minimal. Use a text Fate wordmark initially, one accent distinct from ORE, and limited phase-change motion.
-- Mobile shows the primary Staker/Player action first. Desktop may expose more pool details. Advanced details stay collapsed by default on mobile.
-- Do not build a marketing landing page, casino imagery, decorative gradients, or a card-grid dashboard.
-- Devnet disclosures belong in a compact footer, but risk, fee, pending, commitment, payout, and maximum-loss information must appear before transaction confirmation.
+- Localnet and devnet use the explicitly feature-gated deterministic fixture. The normal production artifact must reject it.
+- Before mainnet, replace only the fixture source and account/CPI gate with the reviewed Fate-owned Entropy integration. Do not share ORE's variable, rely on Entropy's predictable missed-slot fallback, or redeploy Entropy to devnet.
+- Bind randomness to the draw ID and domain-separate side and winner samples. Use unbiased integer selection with rejection sampling.
+- Validate expected ownership, variable address, generation, target slot, finality, freshness, commit/reveal relationship, and one-time consumption. Define a bounded permissionless retry or void/refund path before any mainnet funds are accepted.
 
-## Release Direction
+## Web app
 
-- Develop the page on localhost against a devnet program.
-- Use the owner's available RPC providers through environment configuration. Do not rotate RPC endpoints in the middle of a transaction lifecycle.
-- Deploy the checked page to Vercel when shared devnet testing begins.
-- Buy and configure a production domain later.
-- No mainnet release before economic validation, program security review, Entropy review, legal review, and authority migration to a multisig.
+- Build one mobile-first Next.js App Router page in `app/` with TypeScript, Tailwind CSS, pnpm, Biome, Privy for Solana-only external wallets, and `@solana/kit` by default. Add `@solana/web3.js` only when a required Privy or Entropy path cannot accept Kit transactions.
+- Use an environment-selected primary HTTP/WSS RPC pair with ordered read fallbacks. Submit and confirm a transaction on the same endpoint; never rotate endpoints mid-lifecycle.
+- Derive phases and balances from confirmed on-chain state. Browser timers only display expected deadlines. Refetch affected accounts after confirmation and handle submitted, confirmed, failed, stale, dropped-subscription, wrong-network, and rejected-signature states.
+- The page must show the active phase, threshold and countdown, Staker/Player action, odds, exact payout estimate, fee base, pending/commitment status, maximum loss, erosion, claim state, ten recent results, and compact devnet disclosures before signature.
+- Keep the visual direction calm, dark, serious, and minimal. Use a text Fate wordmark and one accent. Mobile puts the primary action first and keeps advanced detail collapsed. Do not add casino imagery, decorative gradients, a marketing landing page, notifications, analytics, or a card-grid dashboard.
 
-## Immediate Work Order
+## Testing and release
 
-1. Finish adversarial tests, invariant coverage, and weighted-path compute/packet benchmarks for the deterministic Steel program.
-2. Run the keeper and complete custody loop on localnet, then deploy the feature-gated deterministic artifact to devnet.
-3. Build the Next.js app against confirmed localnet/devnet state and exercise the full wallet flow.
-4. Run long devnet batches and compare balances and outcomes with the simulator.
-5. Before mainnet only, replace the deterministic settlement entry point with the verified Entropy account/CPI gate.
-6. Verify Fate's Entropy validation, missed-slot rejection, retry or void/refund recovery, and production artifact before deployment; do not redeploy Entropy to devnet.
+- Add a negative test for every authorization, phase, account, arithmetic, custody, replay, and one-time-use failure, not only happy paths. Include randomized math/tree invariants, capacity and packet/compute measurements, pause-safe exits, provider failure, cleanup, and concurrent caller races.
+- Compare simulator vectors with Rust math byte for byte. Run focused tests first, then the relevant Rust/SBF, app, localnet, and devnet checks. Do not call a deterministic fixture a fairness test.
+- Keep mainnet blocked until economic validation, observed devnet comparison, program security review, Entropy review, legal review, production recovery, and authority migration to a multisig are complete.
+- Update `docs/BUILD_PLAN.md` checkboxes and status notes when work actually completes; do not rewrite history to make a check pass.
 
-## Simulation Commands
+## Working rules
+
+- Preserve unrelated user changes. Start with `git status --short`; leave unrelated dirty files alone.
+- Use `rg` or `rg --files` for search. Prefer a small, focused patch over speculative abstractions or new packages.
+- Keep only `README.md` and `AGENTS.md` as authored Markdown files in the repository root. Put other authored Markdown in `docs/`.
+- Never sign, send, deploy, publish, or contact an external service without explicit user approval. For a transaction, show cluster, fee payer, transfers, recipients, and simulation result first.
+- Never run `git add`, create commits, or push branches. Leave changes unstaged and include one short suggested commit message in the handoff.
+- Prefix supported Solana development CLIs with `NO_DNA=1`.
+
+## Useful checks
 
 From `workspace/fate`:
 
@@ -156,24 +110,4 @@ PYTHONPYCACHEPREFIX=/tmp/fate-pycache python3 \
   data-simulation/run_scenarios.py --data-dir data-simulation
 ```
 
-The cache prefix avoids the protected macOS system Python cache path in this workspace.
-
-## Build Guardrails
-
-- Keep only `README.md` and this required `AGENTS.md` control file in the repository root. Put all other authored Markdown documentation in `docs/`.
-- Never run `git add`, create commits, or push branches. Leave changes unstaged and give the user a short suggested commit message at handoff.
-- Prefix supported Solana development CLIs with `NO_DNA=1` to disable interactive agent-hostile behavior.
-- Never sign or send a transaction without explicit user approval. Default to localnet or devnet, show cluster, fee payer, transfers, and recipients, and simulate before requesting approval.
-- Treat every account, instruction argument, RPC response, and log as hostile input. Validate account owner, data length, discriminator, signer, writability, PDA seeds and canonical bump, and stored account relationships before use.
-- Reject duplicate mutable accounts, reinitialization, substituted CPI programs, fake sysvars, stale randomness, and unchecked narrowing casts. Handle pre-funded PDAs and direct lamport donations without corrupting internal accounting.
-- Assert custody solvency and expected balance deltas at the end of every value-moving instruction. Add a negative test for each validation and authorization failure, not only happy-path coverage.
-- Keep edits scoped to `workspace/fate` unless reading upstream references.
-- Do not modify `repos/steel`, `repos/steel-book`, `repos/entropy`, or ORE repositories for Fate-specific behavior.
-- Do not spend Staker principal anywhere except explicit protocol erosion and user withdrawal.
-- Do not commit Player funds before activation.
-- Do not let an authority or keeper choose, discard, or reroll a valid result.
-- Do not settle more than once or allow a claim more than once.
-- Do not use floating-point protocol math.
-- Do not hide negative Player EV, Staker erosion, protocol fees, pending status, or full-loss risk.
-- Preserve a tested exit path through pause and provider failure.
-- Update `docs/BUILD_PLAN.md` checkboxes as work completes.
+Use the commands documented in `package.json`, `docs/BUILD_PLAN.md`, and `docs/DEVNET.md` for Rust, app, localnet, and devnet checks; do not invent a deployment command when the documented one exists.

@@ -29,8 +29,9 @@ During funding:
 - Player deposits are pending and refundable.
 - The initial activation target is `1% of active Staker TVL`.
 - The first Player deposit starts the waiting clock.
-- Player deposits accumulate until the active threshold is reached.
+- Player deposits accumulate until the active threshold is reached. A deposit that crosses the threshold activates the draw in the same transaction.
 - Stakers may withdraw immediately; each withdrawal recalculates the snapshot and threshold. The last active Staker cannot exit while Player funds remain.
+- A Staker withdrawal that lowers the threshold to the current Player TVL activates the draw in the same transaction.
 - New Staker deposits close after the first Player enters and reopen with the next draw.
 
 At activation:
@@ -41,7 +42,7 @@ At activation:
 - additional Player deposits may join and are immediately committed;
 - Staker deposits and withdrawals remain frozen until settlement.
 
-At the end of the countdown, deposits lock, secure randomness selects the side and winner, settlement executes, and the next funding period opens. Every activated draw produces exactly one jackpot winner.
+At the end of the countdown, deposits close. Any caller can submit settlement; the program verifies the deadline, implicitly locks the draw, obtains secure randomness, selects the side and winner, settles, and opens the next funding period. Every activated draw produces exactly one jackpot winner.
 
 ## Player Win
 
@@ -82,7 +83,6 @@ boost = 1 + 50% * remaining_initial_threshold_fraction
 wallet_weight = sum(deposit * boost_at_deposit)
 ```
 
-
 | Player TVL before deposit | Player weight |
 | ------------------------- | ------------- |
 | 0% of initial threshold   | 1.50x         |
@@ -90,7 +90,6 @@ wallet_weight = sum(deposit * boost_at_deposit)
 | 50%                       | 1.25x         |
 | 75%                       | 1.125x        |
 | 100%                      | 1.00x         |
-
 
 The boost changes only which Player wins after the Player side is selected. It never changes the fixed 90% Player-side probability.
 
@@ -136,7 +135,6 @@ This remains proportional even as the activation threshold falls. Applying the s
 
 The current datasets contain 1,000 timed draws for the primary seed of each size, plus four additional verification seeds per size. That is 15,000 draws across 15 scenario/seed combinations. Each funding period begins with one Player, adds stochastic arrivals every 10 minutes, gives pending positions a 1% refund chance per interval, permits immediate Staker exits, and applies threshold decay until activation.
 
-
 | Metric                                | Small      | Medium     | Large        |
 | ------------------------------------- | ---------- | ---------- | ------------ |
 | Seed                                  | `20260811` | `20260817` | `20260829`   |
@@ -161,7 +159,6 @@ The current datasets contain 1,000 timed draws for the primary seed of each size
 | Protocol revenue                      | 36.08 SOL  | 272.46 SOL | 2,821.17 SOL |
 | Protocol revenue / Player SOL         | 3.44%      | 3.78%      | 4.38%        |
 | Protocol revenue / active-funding day | 2.04 SOL   | 9.09 SOL   | 58.39 SOL    |
-
 
 Funding time increases with protocol size. The primary seeds produced median waits of `20`, `40`, and `60` minutes. Across all five seeds per size, no draw remained in funding for more than 24 hours; four of 15,000 draws reached the final activation floor under the current arrival assumptions.
 

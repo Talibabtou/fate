@@ -37,7 +37,6 @@ jobs:
           filters: |
             app:
               - 'app/**'
-              - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - 'biome.json'
@@ -151,6 +150,8 @@ jobs:
         with:
           name: vercel-output
           path: .vercel/output
+          # Vercel's prebuilt output contains hidden .vc-config.json files.
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 1
 
@@ -235,7 +236,7 @@ jobs:
     needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: needs.checks.outputs.app_check_result == 'success' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    if: always() && needs.checks.result == 'success' && needs.checks.outputs.app_check_result == 'success' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
 
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -279,7 +280,7 @@ jobs:
     needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: needs.checks.outputs.app_check_result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: always() && needs.checks.result == 'success' && needs.checks.outputs.app_check_result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}

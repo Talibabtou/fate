@@ -149,7 +149,9 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: vercel-output
-          path: .vercel/output
+          path: |
+            .vercel/output
+            app/.next
           # Vercel's prebuilt output contains hidden .vc-config.json files.
           include-hidden-files: true
           if-no-files-found: error

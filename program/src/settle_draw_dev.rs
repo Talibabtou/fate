@@ -2,6 +2,7 @@ use fate_api::prelude::*;
 use solana_program::{keccak::hashv, rent::Rent, sysvar::Sysvar};
 use steel::*;
 
+use crate::lock_draw::validate_lock;
 use crate::weight_tree::{select_weight_path, update_weight_path};
 
 const DEV_ENTROPY_DOMAIN: &[u8] = b"fate:dev-fixture:v1";
@@ -57,8 +58,15 @@ pub fn process_settle_draw_dev(
         .has_seeds(&[DRAW_SEED, &next_id.to_le_bytes()], program_id)?;
     let draw = draw_info.as_account::<Draw>(program_id)?;
     let vault = vault_info.as_account::<StakerVault>(program_id)?;
-    if draw.id != draw_id || draw.phase() != Some(DrawPhase::Locked) {
+    if draw.id != draw_id {
         return Err(FateError::InvalidDraw.into());
+    }
+    match draw.phase() {
+        Some(DrawPhase::Locked) => {}
+        Some(DrawPhase::Activated) => {
+            validate_lock(draw, draw_id, Clock::get()?.unix_timestamp)?;
+        }
+        _ => return Err(FateError::InvalidDraw.into()),
     }
     if player_pages[0]
         .as_account::<WeightPage>(program_id)?

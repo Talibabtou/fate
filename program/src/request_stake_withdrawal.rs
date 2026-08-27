@@ -2,6 +2,7 @@ use fate_api::prelude::*;
 use solana_program::{rent::Rent, sysvar::Sysvar};
 use steel::*;
 
+use crate::activate_draw::maybe_activate_draw;
 use crate::weight_tree::update_weight_path;
 
 pub fn process_request_stake_withdrawal(
@@ -98,18 +99,21 @@ pub fn process_request_stake_withdrawal(
     position_info
         .as_account_mut::<StakerPosition>(program_id)?
         .active_shares = new_shares;
-    if draw.first_player_at != 0 {
-        let now = Clock::get()?.unix_timestamp;
-        let elapsed = u64::try_from(
-            now.checked_sub(draw.first_player_at)
-                .ok_or(FateError::InvalidDraw)?,
-        )
-        .map_err(|_| FateError::InvalidDraw)?;
+    let now = Clock::get()?.unix_timestamp;
+    let activated_now = {
         let draw = draw_info.as_account_mut::<Draw>(program_id)?;
-        draw.staker_tvl_snapshot = active_after;
-        draw.initial_threshold_lamports = initial_activation_threshold(active_after)?;
-        draw.activation_threshold_lamports = activation_threshold(active_after, elapsed)?;
-    }
+        if draw.first_player_at != 0 {
+            let elapsed = u64::try_from(
+                now.checked_sub(draw.first_player_at)
+                    .ok_or(FateError::InvalidDraw)?,
+            )
+            .map_err(|_| FateError::InvalidDraw)?;
+            draw.staker_tvl_snapshot = active_after;
+            draw.initial_threshold_lamports = initial_activation_threshold(active_after)?;
+            draw.activation_threshold_lamports = activation_threshold(active_after, elapsed)?;
+        }
+        maybe_activate_draw(draw, now, config.is_paused())?
+    };
     vault_info.send(amount, staker);
     WithdrawalRequestEvent {
         kind: EVENT_WITHDRAWAL_REQUEST,
@@ -122,5 +126,18 @@ pub fn process_request_stake_withdrawal(
         requested_at: Clock::get()?.unix_timestamp,
     }
     .log();
+    if activated_now {
+        let draw = draw_info.as_account::<Draw>(program_id)?;
+        ActivationEvent {
+            kind: EVENT_ACTIVATION,
+            reserved: [0; 7],
+            draw_id: draw.id,
+            threshold_lamports: draw.activation_threshold_lamports,
+            staker_tvl_snapshot_lamports: draw.staker_tvl_snapshot,
+            activated_at: draw.activated_at,
+            locks_at: draw.locks_at,
+        }
+        .log();
+    }
     Ok(())
 }

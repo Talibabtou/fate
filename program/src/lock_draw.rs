@@ -43,7 +43,7 @@ pub fn process_lock_draw(
     Ok(())
 }
 
-fn validate_lock(draw: &Draw, current_draw_id: u64, now: i64) -> Result<(), FateError> {
+pub(crate) fn validate_lock(draw: &Draw, current_draw_id: u64, now: i64) -> Result<(), FateError> {
     if draw.id != current_draw_id
         || draw.phase() != Some(DrawPhase::Activated)
         || draw.locks_at <= 0

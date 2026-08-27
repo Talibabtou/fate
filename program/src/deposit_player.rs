@@ -2,6 +2,7 @@ use fate_api::prelude::*;
 use solana_program::{rent::Rent, sysvar::Sysvar};
 use steel::*;
 
+use crate::activate_draw::maybe_activate_draw;
 use crate::weight_tree::{prepare_weight_path, update_weight_path};
 
 pub fn process_deposit_player(
@@ -181,6 +182,10 @@ pub fn process_deposit_player(
     {
         return Err(FateError::InsufficientCustody.into());
     }
+    let activated_now = {
+        let draw = draw_info.as_account_mut::<Draw>(program_id)?;
+        maybe_activate_draw(draw, now, config.is_paused())?
+    };
     DepositEvent {
         kind: EVENT_DEPOSIT,
         side: EVENT_SIDE_PLAYER,
@@ -191,5 +196,18 @@ pub fn process_deposit_player(
         weight: added_weight.to_le_bytes(),
     }
     .log();
+    if activated_now {
+        let draw = draw_info.as_account::<Draw>(program_id)?;
+        ActivationEvent {
+            kind: EVENT_ACTIVATION,
+            reserved: [0; 7],
+            draw_id: draw.id,
+            threshold_lamports: draw.activation_threshold_lamports,
+            staker_tvl_snapshot_lamports: draw.staker_tvl_snapshot,
+            activated_at: draw.activated_at,
+            locks_at: draw.locks_at,
+        }
+        .log();
+    }
     Ok(())
 }

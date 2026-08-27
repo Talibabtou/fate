@@ -153,10 +153,10 @@ async fn initialize_with_prefunded_config(
 async fn per_wallet_positions_exceed_the_old_player_registry_cap() {
     let (mut context, program_id, _, _) = start().await;
     let staker = Keypair::new();
-    fund(&mut context, &staker.pubkey(), 3 * SOL).await;
+    fund(&mut context, &staker.pubkey(), 123 * SOL).await;
     send(
         &mut context,
-        deposit_stake(program_id, staker.pubkey(), 0, 0, SOL),
+        deposit_stake(program_id, staker.pubkey(), 0, 0, 120 * SOL),
         &[&staker],
     )
     .await
@@ -182,7 +182,7 @@ async fn per_wallet_positions_exceed_the_old_player_registry_cap() {
     }
     send(
         &mut context,
-        request_stake_withdrawal(program_id, staker.pubkey(), 0, 0, SOL / 2),
+        request_stake_withdrawal(program_id, staker.pubkey(), 0, 0, SOL),
         &[&staker],
     )
     .await
@@ -197,11 +197,140 @@ async fn per_wallet_positions_exceed_the_old_player_registry_cap() {
     let draw = read_account::<Draw>(&draw_account);
     assert_eq!(draw.next_player_index, player_count);
     assert_eq!(draw.open_player_positions, player_count);
-    assert_eq!(draw.staker_tvl_snapshot, SOL / 2);
+    assert_eq!(draw.staker_tvl_snapshot, 119 * SOL);
     assert_eq!(
         draw.player_tvl_lamports,
         player_count * MINIMUM_PLAYER_DEPOSIT_LAMPORTS
     );
+}
+
+#[cfg(feature = "dev-randomness")]
+#[tokio::test]
+async fn staker_withdrawal_can_trigger_activation_after_repricing_the_threshold() {
+    let (mut context, program_id, _, _) = start().await;
+    let staker = Keypair::new();
+    let player = Keypair::new();
+    fund(&mut context, &staker.pubkey(), 23 * SOL).await;
+    fund(&mut context, &player.pubkey(), SOL).await;
+
+    send(
+        &mut context,
+        deposit_stake(program_id, staker.pubkey(), 0, 0, 20 * SOL),
+        &[&staker],
+    )
+    .await
+    .unwrap();
+    send(
+        &mut context,
+        deposit_player(program_id, player.pubkey(), 0, 0, 180_000_000),
+        &[&player],
+    )
+    .await
+    .unwrap();
+
+    let funding = read_account::<Draw>(
+        &context
+            .banks_client
+            .get_account(draw_pda(&program_id, 0).0)
+            .await
+            .unwrap()
+            .unwrap(),
+    )
+    .to_owned();
+    assert_eq!(funding.phase(), Some(DrawPhase::Funding));
+    assert_eq!(funding.activation_threshold_lamports, 200_000_000);
+
+    send(
+        &mut context,
+        request_stake_withdrawal(program_id, staker.pubkey(), 0, 0, 2 * SOL),
+        &[&staker],
+    )
+    .await
+    .unwrap();
+
+    let activated = read_account::<Draw>(
+        &context
+            .banks_client
+            .get_account(draw_pda(&program_id, 0).0)
+            .await
+            .unwrap()
+            .unwrap(),
+    )
+    .to_owned();
+    assert_eq!(activated.phase(), Some(DrawPhase::Activated));
+    assert_eq!(activated.staker_tvl_snapshot, 18 * SOL);
+    assert_eq!(activated.activation_threshold_lamports, 180_000_000);
+    assert!(activated.locks_at > activated.activated_at);
+}
+
+#[cfg(feature = "dev-randomness")]
+#[tokio::test]
+async fn paused_withdrawal_does_not_activate_until_unpaused() {
+    let (mut context, program_id, authority, _) = start().await;
+    let staker = Keypair::new();
+    let player = Keypair::new();
+    fund(&mut context, &staker.pubkey(), 23 * SOL).await;
+    fund(&mut context, &player.pubkey(), SOL).await;
+
+    send(
+        &mut context,
+        deposit_stake(program_id, staker.pubkey(), 0, 0, 20 * SOL),
+        &[&staker],
+    )
+    .await
+    .unwrap();
+    send(
+        &mut context,
+        deposit_player(program_id, player.pubkey(), 0, 0, 180_000_000),
+        &[&player],
+    )
+    .await
+    .unwrap();
+    send(
+        &mut context,
+        pause(program_id, authority.pubkey()),
+        &[&authority],
+    )
+    .await
+    .unwrap();
+    send(
+        &mut context,
+        request_stake_withdrawal(program_id, staker.pubkey(), 0, 0, 2 * SOL),
+        &[&staker],
+    )
+    .await
+    .unwrap();
+
+    let funding = read_account::<Draw>(
+        &context
+            .banks_client
+            .get_account(draw_pda(&program_id, 0).0)
+            .await
+            .unwrap()
+            .unwrap(),
+    )
+    .to_owned();
+    assert_eq!(funding.phase(), Some(DrawPhase::Funding));
+    assert_eq!(funding.activation_threshold_lamports, 180_000_000);
+
+    send(
+        &mut context,
+        unpause(program_id, authority.pubkey()),
+        &[&authority],
+    )
+    .await
+    .unwrap();
+    send(&mut context, activate_draw(program_id, 0), &[])
+        .await
+        .unwrap();
+    let activated_account = context
+        .banks_client
+        .get_account(draw_pda(&program_id, 0).0)
+        .await
+        .unwrap()
+        .unwrap();
+    let activated = read_account::<Draw>(&activated_account);
+    assert_eq!(activated.phase(), Some(DrawPhase::Activated));
 }
 
 #[cfg(feature = "dev-randomness")]
@@ -238,9 +367,6 @@ async fn timed_transitions_reject_wrong_phases_and_replays() {
 
     let mut too_early_lock = lock_draw(program_id, 0);
     assert_rejected(&mut context, too_early_lock.clone(), &[]).await;
-    send(&mut context, activate_draw(program_id, 0), &[])
-        .await
-        .unwrap();
     assert_rejected(
         &mut context,
         refund_player(program_id, player.pubkey(), 0, 0),
@@ -284,9 +410,6 @@ async fn timed_transitions_reject_wrong_phases_and_replays() {
         unix_timestamp: draw.locks_at,
         ..Clock::default()
     });
-    send(&mut context, lock_draw(program_id, 0), &[])
-        .await
-        .unwrap();
 
     assert_rejected(
         &mut context,
@@ -307,7 +430,6 @@ async fn timed_transitions_reject_wrong_phases_and_replays() {
     )
     .await;
     assert_rejected(&mut context, activate_draw(program_id, 0), &[]).await;
-    assert_rejected(&mut context, lock_draw(program_id, 0), &[]).await;
 
     send(
         &mut context,
@@ -523,9 +645,6 @@ async fn weighted_paths_settle_claim_and_release_draw_storage() {
     )
     .await
     .unwrap();
-    send(&mut context, activate_draw(program_id, 0), &[])
-        .await
-        .unwrap();
     let draw_account = context
         .banks_client
         .get_account(draw_pda(&program_id, 0).0)
@@ -538,9 +657,6 @@ async fn weighted_paths_settle_claim_and_release_draw_storage() {
         unix_timestamp: locks_at,
         ..Clock::default()
     });
-    send(&mut context, lock_draw(program_id, 0), &[])
-        .await
-        .unwrap();
     let payer = context.payer.pubkey();
     send(
         &mut context,
@@ -670,6 +786,7 @@ async fn weighted_path_operations_reconcile_economics_and_budget() {
     let (mut context, program_id, _, fee_treasury) = start().await;
     let payer = context.payer.pubkey();
     let activation_deposit = MINIMUM_DRAW_POOL_LAMPORTS;
+    let pending_deposit = MINIMUM_PLAYER_DEPOSIT_LAMPORTS;
     let staker = Keypair::new();
     let player = Keypair::new();
     fund(&mut context, &staker.pubkey(), 3 * SOL).await;
@@ -684,13 +801,13 @@ async fn weighted_path_operations_reconcile_economics_and_budget() {
 
     let (deposit_units, deposit_packet) = measure(
         &mut context,
-        deposit_player(program_id, player.pubkey(), 0, 0, activation_deposit),
+        deposit_player(program_id, player.pubkey(), 0, 0, pending_deposit),
         &[&player],
     )
     .await;
     send(
         &mut context,
-        deposit_player(program_id, player.pubkey(), 0, 0, activation_deposit),
+        deposit_player(program_id, player.pubkey(), 0, 0, pending_deposit),
         &[&player],
     )
     .await
@@ -738,11 +855,6 @@ async fn weighted_path_operations_reconcile_economics_and_budget() {
     .await
     .unwrap();
 
-    let (activation_units, activation_packet) =
-        measure(&mut context, activate_draw(program_id, 0), &[]).await;
-    send(&mut context, activate_draw(program_id, 0), &[])
-        .await
-        .unwrap();
     let draw_account = context
         .banks_client
         .get_account(draw_pda(&program_id, 0).0)
@@ -755,11 +867,6 @@ async fn weighted_path_operations_reconcile_economics_and_budget() {
         unix_timestamp: locks_at,
         ..Clock::default()
     });
-
-    let (lock_units, lock_packet) = measure(&mut context, lock_draw(program_id, 0), &[]).await;
-    send(&mut context, lock_draw(program_id, 0), &[])
-        .await
-        .unwrap();
 
     let draw_before = read_account::<Draw>(
         &context
@@ -881,9 +988,6 @@ async fn weighted_path_operations_reconcile_economics_and_budget() {
     )
     .await
     .unwrap();
-    send(&mut context, activate_draw(program_id, 1), &[])
-        .await
-        .unwrap();
     let draw_one = read_account::<Draw>(
         &context
             .banks_client
@@ -897,9 +1001,6 @@ async fn weighted_path_operations_reconcile_economics_and_budget() {
         unix_timestamp: draw_one.locks_at,
         ..Clock::default()
     });
-    send(&mut context, lock_draw(program_id, 1), &[])
-        .await
-        .unwrap();
     let vault_before_staker = read_account::<StakerVault>(
         &context
             .banks_client
@@ -970,15 +1071,13 @@ async fn weighted_path_operations_reconcile_economics_and_budget() {
     );
 
     println!(
-        "WEIGHT_PATH_BENCHMARK deposit={deposit_units}/{deposit_packet} refund={refund_units}/{refund_packet} withdrawal={withdrawal_units}/{withdrawal_packet} repeat_deposit={repeat_deposit_units}/{repeat_deposit_packet} activation={activation_units}/{activation_packet} lock={lock_units}/{lock_packet} settle_player={settle_player_units}/{settle_player_packet} claim={claim_units}/{claim_packet} settle_staker={settle_staker_units}/{settle_staker_packet}"
+        "WEIGHT_PATH_BENCHMARK deposit={deposit_units}/{deposit_packet} refund={refund_units}/{refund_packet} withdrawal={withdrawal_units}/{withdrawal_packet} repeat_deposit={repeat_deposit_units}/{repeat_deposit_packet} settle_player={settle_player_units}/{settle_player_packet} claim={claim_units}/{claim_packet} settle_staker={settle_staker_units}/{settle_staker_packet}"
     );
     for packet_bytes in [
         deposit_packet,
         refund_packet,
         withdrawal_packet,
         repeat_deposit_packet,
-        activation_packet,
-        lock_packet,
         settle_player_packet,
         claim_packet,
         settle_staker_packet,

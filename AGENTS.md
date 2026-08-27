@@ -50,10 +50,10 @@ FUNDING -> ACTIVATED -> deadline -> settlement -> next FUNDING
 - New Staker deposits close after the first Player enters and reopen with the next draw.
 - A Player deposit that reaches the live threshold, or a Staker withdrawal that lowers the threshold to current Player TVL, should activate the draw in that same user transaction. The existing program already follows this rule.
 - At activation, freeze Staker positions, commit pending Players, start the five-minute countdown, and accept countdown Player deposits at 1.00x weight. Early funding deposits may receive up to 1.50x Player-side winner weight.
-- After the deadline, any signer must be able to settle the draw once. No administrator, fee payer, RPC provider, or keeper may choose, discard, or reroll a valid result.
-- Do not make a dedicated keeper a product dependency. Prefer user activity as the normal trigger for due lifecycle work, including atomic activation where the user action changes eligibility. Keep explicit permissionless fallback instructions for time-only activation, deadline settlement, randomness recovery, and cleanup so inactivity cannot trap funds. Fallbacks must be idempotent and safe when another caller wins a race.
+- After the deadline, any signer must be able to settle the draw once. No administrator, fee payer, RPC provider, or caller may choose, discard, or reroll a valid result.
+- Do not make a dedicated worker a product dependency. Prefer user activity as the normal trigger for due lifecycle work, including atomic activation where the user action changes eligibility. Keep explicit permissionless fallback instructions for time-only activation, deadline settlement, randomness recovery, and cleanup so inactivity cannot trap funds. Fallbacks must be idempotent and safe when another caller wins a race.
 - Do not silently make a user's wallet pay for unrelated work. If an app composes lifecycle work with a user action, show the phase change, accounts, fee payer, and possible outcome before signature; use a separate permissionless transaction when account requirements or risk make composition unclear.
-- Existing `app/scripts/keeper.ts` and keeper batch files are development or compatibility tooling while this migration is unfinished. Do not add new keeper authority, custody, reward, or production dependency without an explicit decision.
+- Permissionless callers are fee payers only; do not add caller authority, custody, rewards, or production dependencies without an explicit decision.
 - Pause may stop deposits and activation only. It must never block refunds, Staker withdrawals, claims, locked-draw settlement, or a tested terminal recovery path.
 
 See `docs/LIFECYCLE.md` for the user-triggered progression and caller-paid fallback flow.
@@ -67,7 +67,7 @@ See `docs/LIFECYCLE.md` for the user-triggered progression and caller-paid fallb
 - Treat accounts, instruction bytes, RPC data, sysvars, and logs as hostile input. Use runtime sysvars rather than caller-supplied fake sysvar accounts when the instruction has no such account surface.
 - Check custody solvency and expected lamport deltas at the end of every value-moving instruction. Account for rent, direct lamport donations, liabilities, rounding dust, refunds, withdrawals, claims, and all cleanup recipients.
 - Never commit Player funds before activation, spend Staker principal outside explicit erosion or withdrawal, settle twice, or claim twice.
-- Every timed transition is permissionless. The keeper, if used in development, is only a fee payer and caller; it is never an authority or source of truth.
+- Every timed transition is permissionless. A caller is only a fee payer and transaction submitter; it is never an authority or source of truth.
 
 ## Randomness
 

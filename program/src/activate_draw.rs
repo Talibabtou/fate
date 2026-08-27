@@ -44,6 +44,35 @@ pub fn process_activate_draw(
     Ok(())
 }
 
+pub(crate) fn maybe_activate_draw(
+    draw: &mut Draw,
+    now: i64,
+    paused: bool,
+) -> Result<bool, FateError> {
+    if paused || draw.phase() != Some(DrawPhase::Funding) {
+        return Ok(false);
+    }
+    if draw.first_player_at <= 0
+        || draw.staker_tvl_snapshot == 0
+        || draw.player_tvl_lamports == 0
+        || draw.total_player_weight.get() == 0
+        || draw.outstanding_player_claim_lamports != 0
+    {
+        return Ok(false);
+    }
+    let elapsed = u64::try_from(
+        now.checked_sub(draw.first_player_at)
+            .ok_or(FateError::InvalidDraw)?,
+    )
+    .map_err(|_| FateError::InvalidDraw)?;
+    let live_threshold = activation_threshold(draw.staker_tvl_snapshot, elapsed)?;
+    if draw.player_tvl_lamports < live_threshold {
+        return Ok(false);
+    }
+    mark_activated(draw, now, live_threshold)?;
+    Ok(true)
+}
+
 fn activate_draw_state(draw: &mut Draw, now: i64) -> Result<(), FateError> {
     if draw.phase() != Some(DrawPhase::Funding)
         || draw.first_player_at <= 0
@@ -63,7 +92,11 @@ fn activate_draw_state(draw: &mut Draw, now: i64) -> Result<(), FateError> {
     if draw.player_tvl_lamports < live_threshold {
         return Err(FateError::ActivationThresholdNotMet);
     }
-    draw.activation_threshold_lamports = live_threshold;
+    mark_activated(draw, now, live_threshold)
+}
+
+fn mark_activated(draw: &mut Draw, now: i64, threshold: u64) -> Result<(), FateError> {
+    draw.activation_threshold_lamports = threshold;
     draw.activated_at = now;
     draw.locks_at = now
         .checked_add(i64::try_from(COUNTDOWN_SECONDS).map_err(|_| FateError::ArithmeticOverflow)?)

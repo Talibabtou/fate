@@ -2,35 +2,21 @@ import type { ConnectedStandardSolanaWallet } from "@privy-io/react-auth/solana"
 import {
   address,
   appendTransactionMessageInstructions,
-  type Base64EncodedWireTransaction,
   compileTransaction,
   createSolanaRpc,
   createTransactionMessage,
   getTransactionEncoder,
   type Instruction,
   pipe,
-  type Signature,
   setTransactionMessageFeePayer,
   setTransactionMessageLifetimeUsingBlockhash,
 } from "@solana/kit";
-import { browserRpcUrl } from "./fate-browser";
-import { signKitTransaction } from "./privy-wallet";
-
-export type FateTransactionState =
-  | "simulating"
-  | "awaiting-signature"
-  | "submitted"
-  | "confirmed"
-  | "failed"
-  | "stale";
-
-export type FateTransactionResult = {
-  signature: string;
-  state: "confirmed";
-};
-
-const CONFIRMATION_TIMEOUT_MS = 45_000;
-const CONFIRMATION_POLL_MS = 1_000;
+import { signKitTransaction } from "../../lib/privy-wallet.ts";
+import { primaryRpcUrl } from "../rpc/config.ts";
+import { confirmSignature } from "./confirm.ts";
+import { formatRpcError } from "./errors.ts";
+import type { FateTransactionResult, FateTransactionState } from "./types.ts";
+import { toBase64WireTransaction } from "./wire.ts";
 
 /**
  * Simulate on, submit to, and confirm against the configured primary RPC only.
@@ -46,7 +32,7 @@ export async function executeFateTransaction({
   wallet: ConnectedStandardSolanaWallet;
   onState?: (state: FateTransactionState) => void;
 }): Promise<FateTransactionResult> {
-  const rpc = createSolanaRpc(browserRpcUrl());
+  const rpc = createSolanaRpc(primaryRpcUrl());
   const feePayer = address(wallet.address);
   onState?.("simulating");
 
@@ -92,43 +78,4 @@ export async function executeFateTransaction({
   await confirmSignature(rpc, signature);
   onState?.("confirmed");
   return { signature, state: "confirmed" };
-}
-
-async function confirmSignature(rpc: ReturnType<typeof createSolanaRpc>, signature: Signature) {
-  const deadline = Date.now() + CONFIRMATION_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    const { value: statuses } = await rpc
-      .getSignatureStatuses([signature], { searchTransactionHistory: true })
-      .send();
-    const status = statuses[0];
-    if (status?.err) throw new Error(`Transaction failed on-chain: ${formatRpcError(status.err)}`);
-    if (status?.confirmationStatus === "confirmed" || status?.confirmationStatus === "finalized") {
-      return;
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, CONFIRMATION_POLL_MS));
-  }
-  throw new Error("Transaction confirmation timed out; check the signature before retrying");
-}
-
-function toBase64WireTransaction(bytes: Uint8Array) {
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
-  }
-  return btoa(binary) as Base64EncodedWireTransaction;
-}
-
-function formatRpcError(error: unknown) {
-  if (typeof error === "string") return error;
-  if (error && typeof error === "object") {
-    const value = error as Record<string, unknown>;
-    if (typeof value.message === "string") return value.message;
-    try {
-      return JSON.stringify(error);
-    } catch {
-      return "RPC transaction error";
-    }
-  }
-  return "RPC transaction error";
 }

@@ -56,4 +56,4 @@ The caller must not scan every participant, choose a winner, reroll randomness, 
 
 Pause may stop new deposits and activation. It cannot stop Player refunds, Staker withdrawals, claims, due settlement, or terminal recovery.
 
-No caller means no new transaction, not permission for anyone to seize funds. Once a user or public caller submits the due transition, the program must advance it without a keeper-only requirement. The interface must never promise a draw will activate or settle at a particular wall-clock time.
+No caller means no new transaction, not permission for anyone to seize funds. Once a user or public caller submits the due transition, the program must advance it without a privileged-caller requirement. The interface must never promise a draw will activate or settle at a particular wall-clock time.

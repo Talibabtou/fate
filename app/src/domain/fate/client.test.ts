@@ -16,7 +16,7 @@ import {
   PLAYER_POSITION_DISCRIMINATOR,
   PLAYER_POSITION_SIZE,
   selectWeightedIndex,
-} from "./fate-client.ts";
+} from "./index.ts";
 
 function setU64(data: Uint8Array, offset: number, value: bigint) {
   new DataView(data.buffer).setBigUint64(offset, value, true);
@@ -107,7 +107,7 @@ test("rejects account cosplay and malformed lengths", () => {
   assert.throws(() => decodeDraw(new Uint8Array(DRAW_SIZE - 1)), /size/);
 });
 
-test("keeper chooses only due permissionless transitions", () => {
+test("progression chooses only due permissionless transitions", () => {
   const config = {
     feeTreasury: address("11111111111111111111111111111111"),
     version: 1n,
@@ -169,7 +169,7 @@ test("activation threshold matches the on-chain floor and decay", () => {
   assert.equal(activationThreshold(1_000_000_000n, 0n), 100_000_000n);
 });
 
-test("keeper weighted-path selection returns the authenticated leaf", () => {
+test("weighted-path selection returns the authenticated leaf", () => {
   const tree = address("11111111111111111111111111111111");
   const index = 0x1234_5678n;
   const pages = Array.from({ length: 8 }, (_, level) => {

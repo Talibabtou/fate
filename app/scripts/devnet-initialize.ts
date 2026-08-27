@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { AccountRole, address, createClient, type Instruction } from "@solana/kit";
 import { solanaRpc } from "@solana/kit-plugin-rpc";
 import { payerFromFile } from "@solana/kit-plugin-signer";
-import { fateAddresses } from "./fate-client.ts";
+import { fateAddresses } from "../src/domain/fate/index.ts";
 
 const envPath = resolve(import.meta.dirname, "../../.env.local");
 if (existsSync(envPath)) process.loadEnvFile(envPath);

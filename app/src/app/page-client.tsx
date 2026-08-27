@@ -15,9 +15,10 @@ import {
   permissionlessProgressInstruction,
   refundPlayerInstruction,
   requestStakeWithdrawalInstruction,
-} from "../../scripts/fate-client";
-import { browserProgramAddress, readDevSettlementParticipants } from "../lib/fate-browser";
-import { executeFateTransaction, type FateTransactionState } from "../lib/fate-transactions";
+} from "../domain/fate";
+import { readDevSettlementParticipants } from "../features/fate/data/settlement-participants";
+import { fateProgramAddress } from "../lib/rpc/config";
+import { executeFateTransaction, type FateTransactionState } from "../lib/transactions";
 import { FateFooter } from "./fate-footer";
 import { FateMain, type ReviewAction } from "./fate-main";
 import { FateNavbar } from "./fate-navbar";
@@ -61,7 +62,7 @@ export function FatePage() {
     config && draw ? availableProgressAction(config, draw, BigInt(Math.floor(now / 1000))) : null;
   const isPlayer = mode === "player";
   const hasPrivy = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID?.trim());
-  const programAddress = browserProgramAddress();
+  const programAddress = fateProgramAddress();
   const transactionBusy =
     txState === "simulating" || txState === "awaiting-signature" || txState === "submitted";
 

@@ -11,7 +11,6 @@ const rpcUrl = required("FATE_DEVNET_RPC_HTTP_URL", "https://api.devnet.solana.c
 const programAddress = required("NEXT_PUBLIC_FATE_PROGRAM_ID");
 const deployerPath = required("FATE_DEVNET_PAYER_KEYPAIR");
 const treasuryAddress = required("FATE_DEVNET_TREASURY_ADDRESS");
-const keeperPath = required("KEEPER_KEYPAIR_PATH");
 const artifactPath = resolve("target/deploy/fate.so");
 const programKeypairPath = resolve("target/deploy/fate-keypair.json");
 
@@ -20,7 +19,6 @@ validateAddress("FATE_DEVNET_TREASURY_ADDRESS", treasuryAddress);
 validateHttps("FATE_DEVNET_RPC_HTTP_URL", rpcUrl);
 
 const deployer = publicKey(deployerPath, "FATE_DEVNET_PAYER_KEYPAIR");
-const keeper = publicKey(keeperPath, "KEEPER_KEYPAIR_PATH");
 const programKey = publicKey(programKeypairPath, "target/deploy/fate-keypair.json");
 
 if (programKey !== programAddress) {
@@ -31,14 +29,9 @@ if (programKey !== programAddress) {
 if (deployer === treasuryAddress) {
   throw new Error("deployer and fee treasury must be separate addresses");
 }
-if (keeper === deployer || keeper === treasuryAddress) {
-  throw new Error("keeper must be separate from deployer and fee treasury");
-}
-
 const artifactHash = createHash("sha256").update(readFileSync(artifactPath)).digest("hex");
 const balances = {
   deployer: balance(deployer),
-  keeper: balance(keeper),
   treasury: balance(treasuryAddress),
 };
 
@@ -50,7 +43,6 @@ console.log(
       rpc: rpcUrl,
       program: programAddress,
       deployer,
-      keeper,
       treasury: treasuryAddress,
       artifact: artifactPath,
       artifactSha256: artifactHash,

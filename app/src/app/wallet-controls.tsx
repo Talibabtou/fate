@@ -4,8 +4,8 @@ import { useConnectWallet } from "@privy-io/react-auth";
 import { type ConnectedStandardSolanaWallet, useWallets } from "@privy-io/react-auth/solana";
 import { address } from "@solana/kit";
 import { useEffect, useRef, useState } from "react";
-import { readSolBalance } from "../lib/fate-browser";
 import { privyWalletChain } from "../lib/privy-wallet";
+import { readSolBalance } from "../lib/rpc/client";
 
 export type WalletStatus =
   | "unavailable"

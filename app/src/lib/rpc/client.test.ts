@@ -1,13 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  browserRpcConfig,
-  browserRpcReadUrls,
-  readWithRpcFallback,
-} from "../src/lib/fate-browser.ts";
+import { readWithRpcFallback } from "./client.ts";
+import { rpcConfig, rpcReadUrls } from "./config.ts";
 
 test("browser RPC config keeps the primary first and removes duplicate fallbacks", () => {
-  const config = browserRpcConfig({
+  const config = rpcConfig({
     NEXT_PUBLIC_RPC_HTTP_URL: "https://primary.example",
     NEXT_PUBLIC_RPC_WSS_URL: "wss://primary.example",
     NEXT_PUBLIC_RPC_FALLBACK_HTTP_URLS:
@@ -19,14 +16,11 @@ test("browser RPC config keeps the primary first and removes duplicate fallbacks
     fallbackHttpUrls: ["https://backup.example"],
     primaryWssUrl: "wss://primary.example",
   });
-  assert.deepEqual(browserRpcReadUrls(config), [
-    "https://primary.example",
-    "https://backup.example",
-  ]);
+  assert.deepEqual(rpcReadUrls(config), ["https://primary.example", "https://backup.example"]);
 });
 
 test("browser RPC config requires an environment-provided primary endpoint", () => {
-  assert.throws(() => browserRpcConfig({}), /NEXT_PUBLIC_RPC_HTTP_URL is not configured/);
+  assert.throws(() => rpcConfig({}), /NEXT_PUBLIC_RPC_HTTP_URL is not configured/);
 });
 
 test("browser RPC reads fail over in order and stop after the first success", async () => {

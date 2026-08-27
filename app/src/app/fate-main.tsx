@@ -8,8 +8,8 @@ import {
   DrawPhase,
   type PlayerPositionAccount,
   type StakerPositionAccount,
-} from "../../scripts/fate-client";
-import type { FateTransactionState } from "../lib/fate-transactions";
+} from "../domain/fate";
+import type { FateTransactionState } from "../lib/transactions";
 import type { WalletStatus } from "./wallet-controls";
 
 const SOL = 1_000_000_000n;

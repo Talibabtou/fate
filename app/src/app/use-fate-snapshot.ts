@@ -1,6 +1,7 @@
 import type { Address } from "@solana/kit";
 import { useCallback, useEffect, useState } from "react";
-import { type FateSnapshot, readFateSnapshot, subscribeToFateAccounts } from "../lib/fate-browser";
+import { type FateSnapshot, readFateSnapshot } from "../features/fate/data/snapshot";
+import { subscribeToAccounts } from "../lib/rpc/client";
 
 const NORMAL_POLL_MS = 15_000;
 const FALLBACK_POLL_MS = 5_000;
@@ -54,7 +55,7 @@ export function useFateSnapshot(walletAddress?: Address) {
     async function watch() {
       for (let attempt = 0; attempt < MAX_SUBSCRIPTION_RETRIES && active; attempt += 1) {
         try {
-          await subscribeToFateAccounts(accountAddresses, () => void refresh(), controller.signal);
+          await subscribeToAccounts(accountAddresses, () => void refresh(), controller.signal);
           if (controller.signal.aborted) return;
           setPollingFallback(false);
         } catch (subscriptionError) {

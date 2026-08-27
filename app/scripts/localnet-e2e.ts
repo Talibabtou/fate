@@ -19,9 +19,9 @@ import {
   decodeWeightPage,
   devSettlementParticipants,
   fateAddresses,
-  keeperInstruction,
   participantAddresses,
-} from "./fate-client.ts";
+  permissionlessProgressInstruction,
+} from "../src/domain/fate/index.ts";
 
 const envPath = resolve(import.meta.dirname, "../../.env.local");
 if (existsSync(envPath)) process.loadEnvFile(envPath);
@@ -471,7 +471,7 @@ async function settle(
   participants: { player: Address; playerIndex: bigint; staker: Address; stakerIndex: bigint },
 ) {
   const config = await readConfig(client);
-  const instruction = await keeperInstruction(
+  const instruction = await permissionlessProgressInstruction(
     "settle",
     PROGRAM_ADDRESS,
     payer,
@@ -754,7 +754,7 @@ async function run() {
   await expectFailure(
     payerClient,
     "settle before lock",
-    await keeperInstruction(
+    await permissionlessProgressInstruction(
       "settle",
       PROGRAM_ADDRESS,
       payer,
@@ -781,7 +781,7 @@ async function run() {
       ).playerPosition,
     ),
   );
-  const staleSettlement0 = await keeperInstruction(
+  const staleSettlement0 = await permissionlessProgressInstruction(
     "settle",
     PROGRAM_ADDRESS,
     payer,

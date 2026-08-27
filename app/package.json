@@ -6,10 +6,8 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
-    "keeper": "node --experimental-strip-types scripts/keeper.ts",
-    "keeper:once": "node --experimental-strip-types scripts/keeper.ts --once",
     "check": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test scripts/*.test.ts"
+    "test": "node --experimental-strip-types --test src/domain/fate/client.test.ts src/lib/rpc/client.test.ts"
   },
   "dependencies": {
     "@noble/hashes": "^2.3.0",

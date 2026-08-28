@@ -29,7 +29,10 @@ __pycache__/
 
 # Keep simulator source and authored documentation in the repository. Generated
 # scenario exports and reports stay local.
-data-simulation/
+data-simulation/*
+!data-simulation/simulate.py
+!data-simulation/test_simulate.py
+!data-simulation/math_vectors.csv
 
 # Editors
 .idea/

@@ -397,4 +397,67 @@ mod tests {
             Ok(activation_floor(u64::MAX).unwrap())
         );
     }
+
+    #[test]
+    fn simulator_vectors_match_exact_integer_math() {
+        let mut lines = include_str!("../../data-simulation/math_vectors.csv").lines();
+        assert_eq!(
+            lines.next(),
+            Some("operation,input0,input1,input2,output0,output1,output2,output3,output4,output5")
+        );
+
+        for line in lines {
+            let fields: Vec<&str> = line.split(',').collect();
+            assert_eq!(fields.len(), 10, "malformed math vector: {line}");
+            let input = |index: usize| fields[index].parse::<u64>().unwrap();
+            let output = |index: usize| fields[index].parse::<u64>().unwrap();
+            match fields[0] {
+                "threshold" => {
+                    assert_eq!(activation_threshold(input(1), input(2)).unwrap(), output(4))
+                }
+                "boost" => assert_eq!(
+                    player_boost_bps(input(1), input(2), input(3) != 0).unwrap(),
+                    output(4)
+                ),
+                "weight" => assert_eq!(
+                    boosted_player_weight(input(1), input(2)).unwrap(),
+                    u128::from(output(4))
+                ),
+                "erosion" => assert_eq!(staker_erosion(input(1), input(2)).unwrap(), output(4)),
+                "player_settlement" => {
+                    let settlement = player_settlement(input(1), input(2), input(3)).unwrap();
+                    assert_eq!(
+                        [
+                            settlement.losing_player_lamports,
+                            settlement.staker_erosion_lamports,
+                            settlement.gross_profit_lamports,
+                            settlement.winner_profit_lamports,
+                            settlement.winner_payout_lamports,
+                            settlement.protocol_fee_lamports,
+                        ],
+                        [
+                            output(4),
+                            output(5),
+                            output(6),
+                            output(7),
+                            output(8),
+                            output(9)
+                        ]
+                    );
+                }
+                "staker_settlement" => {
+                    let settlement = staker_settlement(input(1)).unwrap();
+                    assert_eq!(
+                        [
+                            settlement.jackpot_lamports,
+                            settlement.pro_rata_lamports,
+                            settlement.protocol_fee_lamports,
+                        ],
+                        [output(4), output(5), output(6)]
+                    );
+                }
+                operation => panic!("unknown math vector operation: {operation}"),
+            }
+        }
+    }
 }

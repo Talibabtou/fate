@@ -1,5 +1,7 @@
 use fate_api::prelude::*;
 use solana_program::pubkey::Pubkey;
+#[cfg(feature = "dev-randomness")]
+use solana_program::rent::Rent;
 use solana_program_test::{processor, ProgramTest, ProgramTestContext};
 #[cfg(feature = "dev-randomness")]
 use solana_sdk::clock::Clock;
@@ -201,6 +203,12 @@ async fn per_wallet_positions_exceed_the_old_player_registry_cap() {
     assert_eq!(
         draw.player_tvl_lamports,
         player_count * MINIMUM_PLAYER_DEPOSIT_LAMPORTS
+    );
+    println!(
+        "CAPACITY_BENCHMARK player_positions={} weight_pages_per_position={} player_tvl_lamports={}",
+        player_count,
+        WEIGHT_TREE_DEPTH,
+        draw.player_tvl_lamports
     );
 }
 
@@ -516,6 +524,24 @@ async fn account_contract_matrix_rejects_substitution_signer_and_mutability() {
     .await
     .unwrap();
 
+    let substitution_seed = deposit_player(
+        program_id,
+        player.pubkey(),
+        0,
+        0,
+        MINIMUM_PLAYER_DEPOSIT_LAMPORTS,
+    );
+    let mut mutation_state = 0xFA7E_CAFE_u64;
+    for _ in 0..128 {
+        mutation_state = mutation_state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1);
+        let account_index = 1 + (mutation_state as usize) % (substitution_seed.accounts.len() - 1);
+        let mut substituted = substitution_seed.clone();
+        substituted.accounts[account_index].pubkey = Pubkey::new_unique();
+        assert_rejected(&mut context, substituted, &[&player]).await;
+    }
+
     let mut wrong_player_position = deposit_player(
         program_id,
         player.pubkey(),
@@ -598,6 +624,27 @@ async fn account_contract_matrix_rejects_substitution_signer_and_mutability() {
         &[&authority],
     )
     .await;
+}
+
+#[cfg(feature = "dev-randomness")]
+#[tokio::test]
+async fn conflicting_withdrawal_contention_allows_one_state_transition() {
+    let (mut context, program_id, _, _) = start().await;
+    let staker = Keypair::new();
+    fund(&mut context, &staker.pubkey(), 2 * SOL).await;
+    send(
+        &mut context,
+        deposit_stake(program_id, staker.pubkey(), 0, 0, SOL),
+        &[&staker],
+    )
+    .await
+    .unwrap();
+
+    let first = request_stake_withdrawal(program_id, staker.pubkey(), 0, 0, 3 * SOL / 4);
+    let second = first.clone();
+    send(&mut context, first, &[&staker]).await.unwrap();
+    assert_rejected(&mut context, second, &[&staker]).await;
+    println!("CONTENTION_BENCHMARK same_staker_withdrawals=2 successful_withdrawals=1");
 }
 
 #[tokio::test]
@@ -791,6 +838,12 @@ async fn weighted_path_operations_reconcile_economics_and_budget() {
     let player = Keypair::new();
     fund(&mut context, &staker.pubkey(), 3 * SOL).await;
     fund(&mut context, &player.pubkey(), SOL).await;
+    let (deposit_staker_units, deposit_staker_packet) = measure(
+        &mut context,
+        deposit_stake(program_id, staker.pubkey(), 0, 0, SOL),
+        &[&staker],
+    )
+    .await;
     send(
         &mut context,
         deposit_stake(program_id, staker.pubkey(), 0, 0, SOL),
@@ -812,6 +865,57 @@ async fn weighted_path_operations_reconcile_economics_and_budget() {
     )
     .await
     .unwrap();
+
+    let rent = Rent::default();
+    let rent_rows = [
+        ("config", Config::SIZE, config_pda(&program_id).0),
+        ("draw", Draw::SIZE, draw_pda(&program_id, 0).0),
+        (
+            "staker_vault",
+            StakerVault::SIZE,
+            staker_vault_pda(&program_id).0,
+        ),
+        (
+            "staker_position",
+            StakerPosition::SIZE,
+            staker_position_pda(&program_id, &staker.pubkey()).0,
+        ),
+    ];
+    for (name, size, address) in rent_rows {
+        let account = context
+            .banks_client
+            .get_account(address)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            account.lamports >= rent.minimum_balance(size),
+            "{name} is not rent exempt"
+        );
+    }
+    let player_account = context
+        .banks_client
+        .get_account(player_position_pda(&program_id, 0, &player.pubkey()).0)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(player_account.lamports >= rent.minimum_balance(PlayerPosition::SIZE));
+    let page_account = context
+        .banks_client
+        .get_account(weight_page_pda(&program_id, &draw_pda(&program_id, 0).0, 0, 0).0)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(page_account.lamports >= rent.minimum_balance(WeightPage::SIZE));
+    println!(
+        "RENT_BENCHMARK config={} draw={} staker_vault={} staker_position={} player_position={} weight_page={}",
+        rent.minimum_balance(Config::SIZE),
+        rent.minimum_balance(Draw::SIZE),
+        rent.minimum_balance(StakerVault::SIZE),
+        rent.minimum_balance(StakerPosition::SIZE),
+        rent.minimum_balance(PlayerPosition::SIZE),
+        rent.minimum_balance(WeightPage::SIZE),
+    );
 
     let (refund_units, refund_packet) = measure(
         &mut context,
@@ -867,6 +971,11 @@ async fn weighted_path_operations_reconcile_economics_and_budget() {
         unix_timestamp: locks_at,
         ..Clock::default()
     });
+
+    let (lock_units, lock_packet) = measure(&mut context, lock_draw(program_id, 0), &[]).await;
+    send(&mut context, lock_draw(program_id, 0), &[])
+        .await
+        .unwrap();
 
     let draw_before = read_account::<Draw>(
         &context
@@ -981,6 +1090,43 @@ async fn weighted_path_operations_reconcile_economics_and_budget() {
     let claimed_draw = read_account::<Draw>(&claimed_draw_account);
     assert_eq!(claimed_draw.outstanding_player_claim_lamports, 0);
 
+    let tree = draw_pda(&program_id, 0).0;
+    let (close_position_units, close_position_packet) = measure(
+        &mut context,
+        close_player_position(program_id, player.pubkey(), player.pubkey(), 0),
+        &[],
+    )
+    .await;
+    send(
+        &mut context,
+        close_player_position(program_id, player.pubkey(), player.pubkey(), 0),
+        &[],
+    )
+    .await
+    .unwrap();
+    let (close_page_units, close_page_packet) = measure(
+        &mut context,
+        close_weight_page(program_id, tree, player.pubkey(), 0, 0, 0),
+        &[],
+    )
+    .await;
+    send(
+        &mut context,
+        close_weight_page(program_id, tree, player.pubkey(), 0, 0, 0),
+        &[],
+    )
+    .await
+    .unwrap();
+    for level in 1..WEIGHT_TREE_DEPTH as u64 {
+        send(
+            &mut context,
+            close_weight_page(program_id, tree, player.pubkey(), 0, level, 0),
+            &[],
+        )
+        .await
+        .unwrap();
+    }
+
     send(
         &mut context,
         deposit_player(program_id, player.pubkey(), 1, 0, activation_deposit),
@@ -1070,19 +1216,138 @@ async fn weighted_path_operations_reconcile_economics_and_budget() {
         staker_expected.protocol_fee_lamports
     );
 
+    // Advance the recent-draw ring with released positions so archival draw
+    // cleanup is measured against the real not-recent guard.
+    for draw_id in 2..=10 {
+        settle_and_release_draw(
+            &mut context,
+            program_id,
+            fee_treasury,
+            &player,
+            &staker,
+            draw_id,
+        )
+        .await;
+    }
+    let (close_draw_units, close_draw_packet) =
+        measure(&mut context, close_draw(program_id, payer, 0), &[]).await;
+    send(&mut context, close_draw(program_id, payer, 0), &[])
+        .await
+        .unwrap();
+
     println!(
-        "WEIGHT_PATH_BENCHMARK deposit={deposit_units}/{deposit_packet} refund={refund_units}/{refund_packet} withdrawal={withdrawal_units}/{withdrawal_packet} repeat_deposit={repeat_deposit_units}/{repeat_deposit_packet} settle_player={settle_player_units}/{settle_player_packet} claim={claim_units}/{claim_packet} settle_staker={settle_staker_units}/{settle_staker_packet}"
+        "LIFECYCLE_BENCHMARK deposit_staker={deposit_staker_units}/{deposit_staker_packet} deposit_player={deposit_units}/{deposit_packet} refund={refund_units}/{refund_packet} withdrawal={withdrawal_units}/{withdrawal_packet} activation_via_deposit={repeat_deposit_units}/{repeat_deposit_packet} lock={lock_units}/{lock_packet} settle_player={settle_player_units}/{settle_player_packet} claim_player={claim_units}/{claim_packet} close_position={close_position_units}/{close_position_packet} close_page={close_page_units}/{close_page_packet} settle_staker={settle_staker_units}/{settle_staker_packet} close_draw={close_draw_units}/{close_draw_packet}"
     );
     for packet_bytes in [
+        deposit_staker_packet,
         deposit_packet,
         refund_packet,
         withdrawal_packet,
         repeat_deposit_packet,
+        lock_packet,
         settle_player_packet,
         claim_packet,
+        close_position_packet,
+        close_page_packet,
         settle_staker_packet,
+        close_draw_packet,
     ] {
         assert!(packet_bytes <= 1_232);
+    }
+    for units in [
+        deposit_staker_units,
+        deposit_units,
+        refund_units,
+        withdrawal_units,
+        repeat_deposit_units,
+        lock_units,
+        settle_player_units,
+        claim_units,
+        close_position_units,
+        close_page_units,
+        settle_staker_units,
+        close_draw_units,
+    ] {
+        assert!(units < 1_400_000);
+    }
+}
+
+#[cfg(feature = "dev-randomness")]
+async fn settle_and_release_draw(
+    context: &mut ProgramTestContext,
+    program_id: Pubkey,
+    fee_treasury: Pubkey,
+    player: &Keypair,
+    staker: &Keypair,
+    draw_id: u64,
+) {
+    send(
+        context,
+        deposit_player(
+            program_id,
+            player.pubkey(),
+            draw_id,
+            0,
+            MINIMUM_DRAW_POOL_LAMPORTS,
+        ),
+        &[player],
+    )
+    .await
+    .unwrap();
+    let draw = read_account::<Draw>(
+        &context
+            .banks_client
+            .get_account(draw_pda(&program_id, draw_id).0)
+            .await
+            .unwrap()
+            .unwrap(),
+    )
+    .to_owned();
+    context.set_sysvar(&Clock {
+        unix_timestamp: draw.locks_at,
+        ..Clock::default()
+    });
+    send(
+        context,
+        settle_draw_dev(
+            program_id,
+            context.payer.pubkey(),
+            fee_treasury,
+            draw_id,
+            player.pubkey(),
+            0,
+            staker.pubkey(),
+            0,
+        ),
+        &[],
+    )
+    .await
+    .unwrap();
+    if draw_id % 2 == 0 {
+        send(
+            context,
+            claim_player(program_id, player.pubkey(), draw_id),
+            &[player],
+        )
+        .await
+        .unwrap();
+    }
+    send(
+        context,
+        close_player_position(program_id, player.pubkey(), player.pubkey(), draw_id),
+        &[],
+    )
+    .await
+    .unwrap();
+    let tree = draw_pda(&program_id, draw_id).0;
+    for level in 0..WEIGHT_TREE_DEPTH as u64 {
+        send(
+            context,
+            close_weight_page(program_id, tree, player.pubkey(), draw_id, level, 0),
+            &[],
+        )
+        .await
+        .unwrap();
     }
 }
 

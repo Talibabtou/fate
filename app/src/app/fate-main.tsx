@@ -17,7 +17,7 @@ const SOL = 1_000_000_000n;
 export type ReviewAction =
   | { kind: "deposit"; amountLamports: bigint; amountLabel: string }
   | { kind: "refund"; amountLamports: bigint; amountLabel: string }
-  | { kind: "withdraw"; amountLamports: bigint; amountLabel: string }
+  | { kind: "withdraw"; shares: bigint; amountLabel: string }
   | { kind: "claim"; amountLamports: bigint; amountLabel: string }
   | { kind: "claim-withdrawal"; amountLamports: bigint; amountLabel: string }
   | { kind: "progress"; action: "activate" | "settle"; amountLabel: string };
@@ -26,6 +26,7 @@ type SecondaryActionKind = Exclude<ReviewAction["kind"], "deposit" | "progress">
 
 export function FateMain({
   amount,
+  activationThresholdLamports,
   config,
   draw,
   isPlayer,
@@ -45,6 +46,8 @@ export function FateMain({
   wallet,
   walletStatus,
   stakerPosition,
+  stakerTvlLamports,
+  withdrawalShares,
   onAmountChange,
   onCancelReview,
   onConfirmReview,
@@ -53,8 +56,10 @@ export function FateMain({
   onProgressAction,
   onRefresh,
   onSecondaryAction,
+  onWithdrawalSharesChange,
 }: {
   amount: string;
+  activationThresholdLamports: bigint | null;
   config: ConfigAccount | undefined;
   draw: DrawAccount | undefined;
   isPlayer: boolean;
@@ -74,6 +79,8 @@ export function FateMain({
   wallet: ConnectedStandardSolanaWallet | null;
   walletStatus: WalletStatus;
   stakerPosition: StakerPositionAccount | null;
+  stakerTvlLamports: bigint | null;
+  withdrawalShares: string;
   onAmountChange: (value: string) => void;
   onCancelReview: () => void;
   onConfirmReview: () => void;
@@ -82,6 +89,7 @@ export function FateMain({
   onProgressAction: () => void;
   onRefresh: () => void;
   onSecondaryAction: (kind: SecondaryActionKind) => void;
+  onWithdrawalSharesChange: (value: string) => void;
 }) {
   return (
     <section className="fate-workspace" aria-label="Current Fate draw">
@@ -103,8 +111,8 @@ export function FateMain({
           <div>
             <p className="context-label">Player threshold</p>
             <p className="context-value">
-              {draw
-                ? `${formatSol(draw.playerTvlLamports)} / ${formatSol(draw.activationThresholdLamports)} SOL`
+              {draw && activationThresholdLamports !== null
+                ? `${formatSol(draw.playerTvlLamports)} / ${formatSol(activationThresholdLamports)} SOL`
                 : "—"}
             </p>
           </div>
@@ -126,7 +134,9 @@ export function FateMain({
         <div className="context-meta">
           <span>{countdownLabel(draw, now)}</span>
           <span>
-            {draw ? `Staker TVL ${formatSol(draw.stakerTvlSnapshot)} SOL` : "Staker TVL —"}
+            {stakerTvlLamports !== null
+              ? `Staker TVL ${formatSol(stakerTvlLamports)} SOL`
+              : "Staker TVL —"}
           </span>
         </div>
       </div>
@@ -217,13 +227,31 @@ export function FateMain({
             </button>
           ) : null}
           {!isPlayer && stakerPosition?.activeShares && draw?.phase === DrawPhase.Funding ? (
-            <button
-              className="secondary-action"
-              onClick={() => onSecondaryAction("withdraw")}
-              type="button"
-            >
-              Exit all shares
-            </button>
+            <>
+              <label className="amount-field withdrawal-field">
+                <span className="sr-only">Staker shares to withdraw</span>
+                <input
+                  aria-label="Staker shares to withdraw"
+                  inputMode="numeric"
+                  min="1"
+                  max={stakerPosition.activeShares.toString()}
+                  onChange={(event) => onWithdrawalSharesChange(event.target.value)}
+                  placeholder={stakerPosition.activeShares.toString()}
+                  value={withdrawalShares}
+                />
+                <span>shares</span>
+              </label>
+              <p className="minimum-note">
+                Available: {stakerPosition.activeShares} shares. Leave blank to withdraw all.
+              </p>
+              <button
+                className="secondary-action"
+                onClick={() => onSecondaryAction("withdraw")}
+                type="button"
+              >
+                Withdraw selected shares
+              </button>
+            </>
           ) : null}
           {!isPlayer && stakerPosition?.claimableWithdrawalLamports ? (
             <button

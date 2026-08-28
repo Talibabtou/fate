@@ -4,6 +4,7 @@ import type { ConnectedStandardSolanaWallet } from "@privy-io/react-auth/solana"
 import { address, type Instruction } from "@solana/kit";
 import { useEffect, useState } from "react";
 import {
+  activationThreshold,
   type ConfigAccount,
   claimPlayerInstruction,
   claimStakeWithdrawalInstruction,
@@ -44,6 +45,7 @@ export function FatePage() {
   );
   const [mode, setMode] = useState<"staker" | "player">("player");
   const [amount, setAmount] = useState("0.10");
+  const [withdrawalShares, setWithdrawalShares] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const [walletStatus, setWalletStatus] = useState<WalletStatus>("unavailable");
   const [review, setReview] = useState<ReviewAction | null>(null);
@@ -58,7 +60,15 @@ export function FatePage() {
   const draw = snapshot?.draw;
   const config = snapshot?.config;
   const phase = draw ? (phaseLabels[draw.phase] ?? "Unknown") : "Connecting";
-  const progress = draw ? thresholdProgress(draw) : 0;
+  const stakerTvlLamports = draw
+    ? draw.firstPlayerAt > 0n
+      ? draw.stakerTvlSnapshot
+      : (snapshot?.vault.activeAssetsLamports ?? 0n)
+    : null;
+  const activationThresholdLamports = draw
+    ? currentActivationThreshold(draw, snapshot?.vault.activeAssetsLamports ?? 0n, now)
+    : null;
+  const progress = draw ? thresholdProgress(draw, activationThresholdLamports ?? 0n) : 0;
   const progressAction =
     config && draw ? availableProgressAction(config, draw, BigInt(Math.floor(now / 1000))) : null;
   const isPlayer = mode === "player";
@@ -152,10 +162,17 @@ export function FatePage() {
         amountLabel: `${formatSol(snapshot.playerPosition.claimableLamports)} SOL`,
       });
     } else if (kind === "withdraw" && snapshot.stakerPosition?.activeShares) {
+      let shares: bigint;
+      try {
+        shares = parseShares(withdrawalShares, snapshot.stakerPosition.activeShares);
+      } catch (nextError) {
+        setTxMessage(nextError instanceof Error ? nextError.message : "Enter valid shares.");
+        return;
+      }
       setReview({
         kind,
-        amountLamports: snapshot.stakerPosition.activeShares,
-        amountLabel: `${snapshot.stakerPosition.activeShares} shares`,
+        shares,
+        amountLabel: `${shares} shares`,
       });
     } else if (
       kind === "claim-withdrawal" &&
@@ -237,7 +254,7 @@ export function FatePage() {
           walletAddressValue,
           draw.id,
           snapshot.stakerPosition?.leafIndex ?? 0n,
-          review.amountLamports,
+          review.shares,
         );
       } else if (review.kind === "claim") {
         instruction = await claimPlayerInstruction(programAddress, walletAddressValue, draw.id);
@@ -251,6 +268,7 @@ export function FatePage() {
       });
       await refresh();
       setReview(null);
+      if (review.kind === "withdraw") setWithdrawalShares("");
       setTxMessage(`Confirmed ${result.signature.slice(0, 8)}…`);
     } catch (nextError) {
       const message = nextError instanceof Error ? nextError.message : "Transaction failed";
@@ -272,6 +290,7 @@ export function FatePage() {
         amount={amount}
         config={config}
         draw={draw}
+        activationThresholdLamports={activationThresholdLamports}
         isPlayer={isPlayer}
         mode={mode}
         network={networkLabel()}
@@ -292,11 +311,14 @@ export function FatePage() {
         refreshing={refreshing}
         review={review}
         stakerPosition={snapshot?.stakerPosition ?? null}
+        stakerTvlLamports={stakerTvlLamports}
         transactionBusy={transactionBusy}
         txMessage={txMessage}
         txState={txState}
         wallet={wallet}
         walletStatus={walletStatus}
+        withdrawalShares={withdrawalShares}
+        onWithdrawalSharesChange={setWithdrawalShares}
       />
       <FateFooter network={networkLabel()} programAddress={programAddress} />
       {error ? (
@@ -312,12 +334,23 @@ function formatSol(lamports: bigint) {
   return (Number(lamports) / Number(SOL)).toFixed(2);
 }
 
-function thresholdProgress(draw: DrawAccount) {
-  if (draw.stakerTvlSnapshot === 0n || draw.activationThresholdLamports === 0n) return 0;
-  return Math.min(
-    100,
-    Math.round(Number((draw.playerTvlLamports * 100n) / draw.activationThresholdLamports)),
-  );
+function currentActivationThreshold(draw: DrawAccount, currentStakerTvl: bigint, now: number) {
+  if (draw.phase === DrawPhase.Funding) {
+    const stakerTvl = draw.firstPlayerAt > 0n ? draw.stakerTvlSnapshot : currentStakerTvl;
+    if (stakerTvl === 0n) return 0n;
+    const nowSeconds = BigInt(Math.floor(now / 1000));
+    const elapsed =
+      draw.firstPlayerAt > 0n && nowSeconds > draw.firstPlayerAt
+        ? nowSeconds - draw.firstPlayerAt
+        : 0n;
+    return activationThreshold(stakerTvl, elapsed);
+  }
+  return draw.activationThresholdLamports;
+}
+
+function thresholdProgress(draw: DrawAccount, threshold: bigint) {
+  if (threshold === 0n) return 0;
+  return Math.min(100, Math.round(Number((draw.playerTvlLamports * 100n) / threshold)));
 }
 
 function availableProgressAction(config: ConfigAccount, draw: DrawAccount, now: bigint) {
@@ -337,6 +370,16 @@ function parseSolAmount(value: string) {
   const lamports = BigInt(whole) * SOL + BigInt(fraction.padEnd(9, "0"));
   if (lamports <= 0n) throw new Error("Enter an amount greater than zero.");
   return lamports;
+}
+
+function parseShares(value: string, maximum: bigint) {
+  const normalized = value.trim();
+  if (!normalized) return maximum;
+  if (!/^\d+$/.test(normalized)) throw new Error("Enter a whole number of shares.");
+  const shares = BigInt(normalized);
+  if (shares <= 0n) throw new Error("Enter at least one share.");
+  if (shares > maximum) throw new Error(`You can withdraw at most ${maximum} shares.`);
+  return shares;
 }
 
 function networkLabel() {

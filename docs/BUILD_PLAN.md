@@ -79,10 +79,10 @@ The client must show any extra fee payer, account creation, settlement effect, a
 - [x] Reject duplicate mutable accounts, reinitialization, substituted accounts, stale phases, unchecked narrowing casts, double settlement, and double claim.
 - [x] Keep participant work bounded by one wallet and an eight-page tree path. Never add a shared participant array or settlement-time registry scan.
 - [x] Track Player liabilities, Staker withdrawal liabilities, rent reserves, protocol fees, and rounding dust explicitly.
-- [ ] Compare simulator vectors with Rust math byte for byte.
-- [ ] Run capacity, contention, packet-size, compute, and rent measurements for deposit, refund, withdrawal, activation, settlement, claims, and cleanup.
-- [ ] Expand substituted-account and weighted-tree fuzzing beyond the current deterministic matrix.
-- [ ] Rerun the full host Rust, SBF, production-feature, and app test matrix after lifecycle changes.
+- [x] Compare simulator vectors with Rust math byte for byte.
+- [x] Run capacity, contention, packet-size, compute, and rent measurements for deposit, refund, withdrawal, activation, settlement, claims, and cleanup.
+- [x] Expand substituted-account and weighted-tree fuzzing beyond the current deterministic matrix.
+- [x] Rerun the full host Rust, SBF, production-feature, and app test matrix after lifecycle changes.
 
 ## Randomness gate
 

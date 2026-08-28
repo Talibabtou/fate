@@ -642,6 +642,15 @@ input:focus-visible {
   color: var(--dim);
 }
 
+.withdrawal-field {
+  margin-top: 0.85rem;
+}
+
+.withdrawal-field input {
+  font-size: 1.1rem;
+  letter-spacing: normal;
+}
+
 .amount-field > span:last-child {
   color: var(--muted);
   font-size: 0.76rem;

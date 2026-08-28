@@ -160,4 +160,51 @@ mod tests {
     fn account_size_is_stable() {
         assert_eq!(WeightPage::SIZE, 344);
     }
+
+    #[test]
+    fn weighted_path_property_fuzz_covers_namespace_and_metadata_mutations() {
+        let tree = Pubkey::new_unique();
+        let mut state = 0xFA7E_2026_5EED_u64;
+        for _ in 0..2_048 {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1);
+            let index = state & u64::from(u32::MAX);
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1);
+            let weight = u128::from(1 + state % 1_000_000);
+            let pages = path(tree, index, weight);
+
+            assert_eq!(validate_weight_path(&pages, &tree, index), Ok(()));
+            assert_eq!(select_weighted_index(&pages, &tree, weight - 1), Ok(index));
+            assert_eq!(
+                select_weighted_index(&pages, &tree, weight),
+                Err(FateError::SelectionOutOfRange)
+            );
+
+            let mut wrong_tree = pages.clone();
+            wrong_tree[(state as usize) % WEIGHT_TREE_DEPTH].tree = Pubkey::new_unique();
+            assert_eq!(
+                validate_weight_path(&wrong_tree, &tree, index),
+                Err(FateError::InvalidWeightTree)
+            );
+
+            let mut wrong_level = pages.clone();
+            let level = (state as usize) % WEIGHT_TREE_DEPTH;
+            wrong_level[level].level = wrong_level[level].level.wrapping_add(1);
+            assert_eq!(
+                validate_weight_path(&wrong_level, &tree, index),
+                Err(FateError::InvalidWeightTree)
+            );
+
+            let mut wrong_prefix = pages;
+            let level = (state as usize) % WEIGHT_TREE_DEPTH;
+            wrong_prefix[level].prefix ^= 1;
+            assert_eq!(
+                validate_weight_path(&wrong_prefix, &tree, index),
+                Err(FateError::InvalidWeightTree)
+            );
+        }
+    }
 }

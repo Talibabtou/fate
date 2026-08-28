@@ -32,6 +32,32 @@ If sources disagree, stop and name the conflict. An explicitly checked decision 
 
 The protocol and client use permissionless progression. No dedicated lifecycle worker or caller key is required.
 
+## CI/CD hardening
+
+The workflow now reaches a successful Vercel deployment for app changes. The remaining work makes those checks enforceable, keeps the program gate honest, and gives deployments a tested recovery path.
+
+### Working baseline
+
+- [x] Detect app and program changes separately, run their checks in parallel, and let the required-check job accept intentional skips.
+- [x] Install JavaScript dependencies from the frozen pnpm lockfile and cache the pnpm and Rust toolchains.
+- [x] Use Node 24-compatible GitHub Action releases.
+- [x] Run `vercel pull`, `vercel build`, and `vercel deploy --prebuilt` in the same deploy job so Vercel sees one consistent workspace.
+- [x] Keep fork pull requests away from Vercel secrets and deployment jobs.
+
+### Ordered hardening work
+
+- [ ] Protect `main` with a branch ruleset that requires `CI / Required checks`, blocks force-pushes, and requires pull requests before merge.
+- [ ] Run `pnpm app:build` in `app-checks` for every app change so the application build is part of the merge gate, not only a later deployment step.
+- [ ] Run `cargo fmt --all -- --check`, host Rust tests, and the SBF lifecycle tests in `program-checks`; include the production-feature test where its toolchain is available.
+- [ ] Include the root `package.json` and workflow files in change detection, then add a dedicated workflow syntax and action-reference validation step.
+- [ ] Pin every GitHub Action to a full commit SHA with a version comment, and add Dependabot or Renovate rules for action and package updates.
+- [ ] Stop passing `VERCEL_TOKEN` through CLI arguments; let the Vercel CLI read it from the job environment and keep token values out of process arguments.
+- [ ] Add a scheduled JavaScript dependency audit with a clear severity threshold, then decide which findings block merges and which only open maintenance work.
+- [ ] Add a post-deployment smoke check that captures the deployment URL and verifies the public app responds before reporting deployment success.
+- [ ] Add a manual Vercel rollback workflow with an explicit deployment target and a short verification step.
+- [ ] Publish a concise job summary on failure with the failed gate, relevant command, and link to the run so failures can feed directly into the agent repair loop.
+- [ ] Once the browser and devnet flows exist, run the mocked wallet flow and permissionless lifecycle checks in CI before shared devnet testing.
+
 ## Lifecycle migration
 
 The protocol must keep working without a dedicated worker or privileged caller.

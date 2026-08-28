@@ -1,9 +1,10 @@
 import type { ConnectedStandardSolanaWallet } from "@privy-io/react-auth/solana";
+import { fatePublicConfig } from "./public-config";
 
 export type FateWalletChain = "solana:devnet" | "solana:mainnet" | "solana:testnet";
 
 export function privyWalletChain(): FateWalletChain | null {
-  switch (process.env.NEXT_PUBLIC_SOLANA_NETWORK?.trim().toLowerCase()) {
+  switch (fatePublicConfig.network?.toLowerCase()) {
     case "devnet":
       return "solana:devnet";
     case "mainnet":

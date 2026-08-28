@@ -2,11 +2,12 @@
 
 import { PrivyProvider } from "@privy-io/react-auth";
 import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
+import { fatePublicConfig } from "../lib/public-config";
 
 const solanaConnectors = toSolanaWalletConnectors({ shouldAutoConnect: true });
 
 export function Providers({ children }: Readonly<{ children: React.ReactNode }>) {
-  const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID?.trim();
+  const appId = fatePublicConfig.privyAppId;
 
   // Keep the read-only preview usable until the public Privy app ID is configured.
   if (!appId) return children;

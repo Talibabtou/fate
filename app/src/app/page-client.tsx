@@ -17,6 +17,7 @@ import {
   requestStakeWithdrawalInstruction,
 } from "../domain/fate";
 import { readDevSettlementParticipants } from "../features/fate/data/settlement-participants";
+import { fatePublicConfig } from "../lib/public-config";
 import { fateProgramAddress } from "../lib/rpc/config";
 import { executeFateTransaction, type FateTransactionState } from "../lib/transactions";
 import { FateFooter } from "./fate-footer";
@@ -61,7 +62,7 @@ export function FatePage() {
   const progressAction =
     config && draw ? availableProgressAction(config, draw, BigInt(Math.floor(now / 1000))) : null;
   const isPlayer = mode === "player";
-  const hasPrivy = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID?.trim());
+  const hasPrivy = Boolean(fatePublicConfig.privyAppId);
   const programAddress = fateProgramAddress();
   const transactionBusy =
     txState === "simulating" || txState === "awaiting-signature" || txState === "submitted";
@@ -339,5 +340,5 @@ function parseSolAmount(value: string) {
 }
 
 function networkLabel() {
-  return process.env.NEXT_PUBLIC_SOLANA_NETWORK?.trim() || "localnet";
+  return fatePublicConfig.network || "localnet";
 }

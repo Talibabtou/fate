@@ -462,6 +462,12 @@ input:focus-visible {
   gap: 1rem;
 }
 
+.draw-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 .draw-title {
   flex-wrap: wrap;
   gap: 0.65rem;
@@ -489,6 +495,43 @@ input:focus-visible {
 
 .quiet-button:hover {
   color: var(--ink);
+}
+
+.quick-action {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    color 160ms ease,
+    background 160ms ease,
+    opacity 160ms ease;
+}
+
+.quick-action:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.quick-action:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.lifecycle-action {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+}
+
+.lifecycle-mark {
+  font-size: 0.72rem;
 }
 
 .refresh-mark {

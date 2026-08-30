@@ -3,13 +3,14 @@
   "private": true,
   "packageManager": "pnpm@11.24.0",
   "scripts": {
+    "markdownlint": "markdownlint-cli2",
     "biome:check": "biome check .",
     "biome:fix": "biome check --write .",
     "app:check": "pnpm --dir app check",
     "app:build": "pnpm --dir app build",
     "app:dev": "pnpm --dir app dev",
     "app:test": "pnpm --dir app test",
-    "check": "pnpm biome:check && pnpm app:check && pnpm app:test",
+    "check": "pnpm markdownlint && pnpm biome:check && pnpm app:check && pnpm app:test",
     "devnet:config": "node --experimental-strip-types app/scripts/check-cluster-config.ts devnet",
     "devnet:init": "node --experimental-strip-types app/scripts/devnet-initialize.ts",
     "devnet:preflight": "node --experimental-strip-types app/scripts/check-devnet-readiness.ts",
@@ -24,6 +25,7 @@
     "program:fmt": "cargo fmt --all -- --check"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.10"
+    "@biomejs/biome": "^2.5.11",
+    "markdownlint-cli2": "0.23.2"
   }
 }

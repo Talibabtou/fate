@@ -8,12 +8,12 @@ Status snapshot: 2026-08-27. The deterministic custody path exists. The app is s
 
 When a task touches these areas, read the matching source first:
 
-| Area | Source |
-| --- | --- |
-| Product rules and disclosures | `README.md` |
-| Account layout and custody | `ACCOUNT_MODEL.md` |
-| Draw progression and user-paid fallbacks | `LIFECYCLE.md` |
-| Executable economic assumptions | `data-simulation/simulate.py` |
+| Area                                       | Source                        |
+| ------------------------------------------ | ----------------------------- |
+| Product rules and disclosures              | `README.md`                   |
+| Account layout and custody                 | `ACCOUNT_MODEL.md`            |
+| Draw progression and user-paid fallbacks   | `LIFECYCLE.md`                |
+| Executable economic assumptions            | `data-simulation/simulate.py` |
 | Rust state, math, and instruction behavior | `api/`, `program/`, and tests |
 
 If sources disagree, stop and name the conflict. An explicitly checked decision in this file temporarily outranks an unchecked proposal, but code changes must also update the affected documentation.
@@ -47,16 +47,12 @@ The workflow now reaches a successful Vercel deployment for app changes. The rem
 ### Ordered hardening work
 
 - [ ] Protect `main` with a branch ruleset that requires `CI / Required checks`, blocks force-pushes, and requires pull requests before merge.
-- [ ] Run `pnpm app:build` in `app-checks` for every app change so the application build is part of the merge gate, not only a later deployment step.
-- [ ] Run `cargo fmt --all -- --check`, host Rust tests, and the SBF lifecycle tests in `program-checks`; include the production-feature test where its toolchain is available.
-- [ ] Include the root `package.json` and workflow files in change detection, then add a dedicated workflow syntax and action-reference validation step.
-- [ ] Pin every GitHub Action to a full commit SHA with a version comment, and add Dependabot or Renovate rules for action and package updates.
+- [x] Run `pnpm app:build` in `app-checks` for every app change so the application build is part of the merge gate, not only a later deployment step.
+- [x] Run `cargo fmt --all -- --check`, host Rust tests, and the SBF lifecycle tests in `program-checks`; include the production-feature test where its toolchain is available.
+- [x] Include the root `package.json` and workflow files in change detection.
+- [ ] Add a dedicated workflow syntax and action-reference validation step.
 - [ ] Stop passing `VERCEL_TOKEN` through CLI arguments; let the Vercel CLI read it from the job environment and keep token values out of process arguments.
-- [ ] Add a scheduled JavaScript dependency audit with a clear severity threshold, then decide which findings block merges and which only open maintenance work.
-- [ ] Add a post-deployment smoke check that captures the deployment URL and verifies the public app responds before reporting deployment success.
-- [ ] Add a manual Vercel rollback workflow with an explicit deployment target and a short verification step.
 - [ ] Publish a concise job summary on failure with the failed gate, relevant command, and link to the run so failures can feed directly into the agent repair loop.
-- [ ] Once the browser and devnet flows exist, run the mocked wallet flow and permissionless lifecycle checks in CI before shared devnet testing.
 
 ## Lifecycle migration
 
@@ -183,11 +179,11 @@ The first implementation pass should stop after section 1 and keep behavior unch
 ## Devnet validation
 
 - [x] Deploy the deterministic five-minute artifact to devnet and keep its program ID and authority records outside the source of truth for product behavior.
-- [ ] Run manual Staker and Player flows from external wallets.
+- [x] Run manual Staker and Player flows from external wallets.
 - [ ] Run long scripted draw batches using ordinary permissionless callers and user-triggered progression.
 - [ ] Compare devnet outcomes, balances, fees, claims, withdrawals, rent, funding time, and RPC failures with the simulator.
 - [ ] Record artifact hash, program commit, cluster, draw IDs, signatures, and test conditions in dated test evidence, not in this plan's decision sections.
-- [ ] Deploy the checked app to Vercel for shared devnet testing and keep the site labeled test-only.
+- [x] Deploy the checked app to Vercel for shared devnet testing and keep the site labeled test-only.
 
 ## Mainnet gates
 

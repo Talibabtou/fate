@@ -100,10 +100,32 @@ export function FateMain({
             #{draw?.id.toString() ?? "—"} <span>{phase}</span>
           </h1>
         </div>
-        <button className="quiet-button" onClick={onRefresh} type="button">
-          <span className={refreshing ? "refresh-mark is-spinning" : "refresh-mark"}>↻</span>
-          {refreshing ? "Reading" : "Refresh"}
-        </button>
+        <div className="draw-actions">
+          {progressAction ? (
+            <button
+              aria-label={progressAction === "activate" ? "Activate draw" : "Settle draw"}
+              className="quick-action lifecycle-action"
+              disabled={transactionBusy || walletStatus !== "connected"}
+              onClick={onProgressAction}
+              title={progressAction === "activate" ? "Activate draw" : "Settle draw"}
+              type="button"
+            >
+              <span aria-hidden="true" className="lifecycle-mark">
+                {progressAction === "activate" ? "▶" : "↗"}
+              </span>
+            </button>
+          ) : null}
+          <button
+            aria-label={refreshing ? "Refreshing live state" : "Refresh live state"}
+            className="quick-action refresh-action"
+            disabled={refreshing}
+            onClick={onRefresh}
+            title={refreshing ? "Refreshing…" : "Refresh live state"}
+            type="button"
+          >
+            <span className={refreshing ? "refresh-mark is-spinning" : "refresh-mark"}>↻</span>
+          </button>
+        </div>
       </div>
 
       <div className="draw-context">
@@ -142,30 +164,6 @@ export function FateMain({
       </div>
 
       <div className="action-layout">
-        {progressAction ? (
-          <div className="transaction-review lifecycle-prompt">
-            <div className="transaction-review-row">
-              <span>Lifecycle</span>
-              <strong>
-                {progressAction === "activate" ? "Activation is ready" : "Settlement is due"}
-              </strong>
-            </div>
-            <p className="terms-note">
-              A connected wallet can submit this permissionless transition and pay its network fee.
-              Fate will simulate it before asking for approval.
-            </p>
-            <button
-              className="primary-action"
-              disabled={transactionBusy || walletStatus !== "connected"}
-              onClick={onProgressAction}
-              type="button"
-            >
-              {progressAction === "activate" ? "Activate draw" : "Settle draw"}
-              <span aria-hidden="true">→</span>
-            </button>
-          </div>
-        ) : null}
-
         <div className="action-intro">
           <p className="eyebrow">Your move</p>
           <h2 className="display-font action-title">Choose a side.</h2>

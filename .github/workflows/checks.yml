@@ -24,8 +24,9 @@ jobs:
     name: Detect changed areas
     runs-on: ubuntu-latest
     outputs:
-      app: ${{ steps.filter.outputs.app == 'true' || github.event_name == 'workflow_dispatch' }}
-      program: ${{ steps.filter.outputs.program == 'true' || github.event_name == 'workflow_dispatch' }}
+      app: ${{ steps.filter.outputs.app == 'true' || steps.filter.outputs.shared == 'true' || github.event_name == 'workflow_dispatch' }}
+      program: ${{ steps.filter.outputs.program == 'true' || steps.filter.outputs.shared == 'true' || github.event_name == 'workflow_dispatch' }}
+      docs: ${{ steps.filter.outputs.docs == 'true' || steps.filter.outputs.shared == 'true' || github.event_name == 'workflow_dispatch' }}
 
     steps:
       - uses: actions/checkout@v6
@@ -37,19 +38,27 @@ jobs:
           filters: |
             app:
               - 'app/**'
-              - 'pnpm-lock.yaml'
-              - 'pnpm-workspace.yaml'
-              - 'biome.json'
             program:
               - 'api/**'
               - 'program/**'
+            docs:
+              - '**/*.md'
+            shared:
+              - '.github/workflows/**'
+              - '.github/actions/**'
+              - '.markdownlint-cli2.jsonc'
+              - 'package.json'
+              - 'app/package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'biome.json'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
               - 'rustfmt.toml'
 
   app-checks:
-    name: Biome, TypeScript, and tests
+    name: Biome, TypeScript, tests, and build
     needs: changes
     if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
@@ -73,12 +82,36 @@ jobs:
       - name: Check app
         run: pnpm check
 
-      - name: Build app without Vercel
-        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
+      - name: Build app
         run: pnpm app:build
 
+  docs-checks:
+    name: Markdown lint
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint Markdown
+        run: pnpm markdownlint
+
   program-checks:
-    name: Program build
+    name: Format, host tests, and SBF lifecycle tests
     needs: changes
     if: needs.changes.outputs.program == 'true'
     runs-on: ubuntu-latest
@@ -88,6 +121,15 @@ jobs:
       - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run deterministic host tests
+        run: NO_DNA=1 cargo test --workspace --features dev-randomness,fast-localnet
+
+      - name: Run production-feature host tests
+        run: NO_DNA=1 cargo test --workspace --no-default-features
 
       - name: Cache Agave toolchain
         id: agave-cache
@@ -126,12 +168,40 @@ jobs:
           cargo-build-sbf --version
           cargo-test-sbf --version
 
-      - name: Build program
+      - name: Build deterministic SBF program
         run: NO_DNA=1 cargo build-sbf --features dev-randomness,fast-localnet -- --package fate-program
+
+      - name: Run deterministic SBF lifecycle tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          tests=(
+            account_contract_matrix_rejects_substitution_signer_and_mutability
+            conflicting_withdrawal_contention_allows_one_state_transition
+            initialization_handles_prefunded_pdas_and_rejects_bad_targets
+            paused_withdrawal_does_not_activate_until_unpaused
+            per_wallet_positions_exceed_the_old_player_registry_cap
+            staker_withdrawal_can_trigger_activation_after_repricing_the_threshold
+            timed_transitions_reject_wrong_phases_and_replays
+            weighted_path_compute_and_packet_budget
+            weighted_path_operations_reconcile_economics_and_budget
+            weighted_paths_settle_claim_and_release_draw_storage
+          )
+          for test_name in "${tests[@]}"; do
+            echo "::group::SBF lifecycle test: $test_name"
+            NO_DNA=1 cargo test-sbf --features dev-randomness,fast-localnet --package fate-program --test lifecycle "$test_name"
+            echo "::endgroup::"
+          done
+
+      - name: Build production-feature SBF program
+        run: NO_DNA=1 cargo build-sbf --no-default-features -- --package fate-program
+
+      - name: Run production-feature SBF lifecycle tests
+        run: NO_DNA=1 cargo test-sbf --no-default-features --package fate-program --test lifecycle -- --test-threads=1
 
   checks:
     name: Required checks
-    needs: [changes, app-checks, program-checks]
+    needs: [changes, app-checks, program-checks, docs-checks]
     if: always()
     runs-on: ubuntu-latest
     outputs:
@@ -143,10 +213,11 @@ jobs:
           CHANGES_RESULT: ${{ needs.changes.result }}
           APP_RESULT: ${{ needs.app-checks.result }}
           PROGRAM_RESULT: ${{ needs.program-checks.result }}
+          DOCS_RESULT: ${{ needs.docs-checks.result }}
         shell: bash
         run: |
           set -euo pipefail
-          for result in "$CHANGES_RESULT" "$APP_RESULT" "$PROGRAM_RESULT"; do
+          for result in "$CHANGES_RESULT" "$APP_RESULT" "$PROGRAM_RESULT" "$DOCS_RESULT"; do
             if [[ "$result" != "success" && "$result" != "skipped" ]]; then
               echo "::error::A required CI job ended with: $result"
               exit 1

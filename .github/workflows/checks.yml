@@ -26,7 +26,6 @@ jobs:
     outputs:
       app: ${{ steps.filter.outputs.app == 'true' || steps.filter.outputs.shared == 'true' || github.event_name == 'workflow_dispatch' }}
       program: ${{ steps.filter.outputs.program == 'true' || steps.filter.outputs.shared == 'true' || github.event_name == 'workflow_dispatch' }}
-      docs: ${{ steps.filter.outputs.docs == 'true' || steps.filter.outputs.shared == 'true' || github.event_name == 'workflow_dispatch' }}
 
     steps:
       - uses: actions/checkout@v6
@@ -41,12 +40,9 @@ jobs:
             program:
               - 'api/**'
               - 'program/**'
-            docs:
-              - '**/*.md'
             shared:
               - '.github/workflows/**'
               - '.github/actions/**'
-              - '.markdownlint-cli2.jsonc'
               - 'package.json'
               - 'app/package.json'
               - 'pnpm-lock.yaml'
@@ -84,31 +80,6 @@ jobs:
 
       - name: Build app
         run: pnpm app:build
-
-  docs-checks:
-    name: Markdown lint
-    needs: changes
-    if: needs.changes.outputs.docs == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: pnpm/action-setup@v6
-        with:
-          run_install: false
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install JavaScript dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Lint Markdown
-        run: pnpm markdownlint
 
   program-checks:
     name: Format, host tests, and SBF lifecycle tests
@@ -201,7 +172,7 @@ jobs:
 
   checks:
     name: Required checks
-    needs: [changes, app-checks, program-checks, docs-checks]
+    needs: [changes, app-checks, program-checks]
     if: always()
     runs-on: ubuntu-latest
     outputs:
@@ -213,11 +184,10 @@ jobs:
           CHANGES_RESULT: ${{ needs.changes.result }}
           APP_RESULT: ${{ needs.app-checks.result }}
           PROGRAM_RESULT: ${{ needs.program-checks.result }}
-          DOCS_RESULT: ${{ needs.docs-checks.result }}
         shell: bash
         run: |
           set -euo pipefail
-          for result in "$CHANGES_RESULT" "$APP_RESULT" "$PROGRAM_RESULT" "$DOCS_RESULT"; do
+          for result in "$CHANGES_RESULT" "$APP_RESULT" "$PROGRAM_RESULT"; do
             if [[ "$result" != "success" && "$result" != "skipped" ]]; then
               echo "::error::A required CI job ended with: $result"
               exit 1

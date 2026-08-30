@@ -1,6 +1,6 @@
 # Fate
 
-Fate is a SOL lottery with two ways to participate:
+Fate is a SOL lottery with 2 ways to participate:
 
 - **Staker:** deposits SOL persistently and receives exposure to Player losses.
 - **Player:** commits SOL to one draw for a chance to win the other Player deposits plus a small contribution from Stakers.

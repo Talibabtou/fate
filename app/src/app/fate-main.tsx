@@ -18,7 +18,6 @@ export function FateMain({
   view,
   review,
   transactionBusy,
-  txMessage,
   txState,
   wallet,
   walletStatus,
@@ -36,7 +35,6 @@ export function FateMain({
   amount: string;
   review: ReviewAction | null;
   transactionBusy: boolean;
-  txMessage: string | null;
   txState: FateTransactionState | null;
   wallet: ConnectedStandardSolanaWallet | null;
   walletStatus: WalletStatus;
@@ -118,18 +116,6 @@ export function FateMain({
             txState={txState}
             wallet={wallet}
           />
-        ) : null}
-
-        {txMessage ? (
-          <p
-            className={
-              txState === "failed" || txState === "stale"
-                ? "transaction-message is-error"
-                : "transaction-message"
-            }
-          >
-            {txMessage}
-          </p>
         ) : null}
       </PositionActionForm>
 

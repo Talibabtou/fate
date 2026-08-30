@@ -9,6 +9,7 @@ import type { FateViewModel } from "./fate/fate-view-model";
 import { FateFooter } from "./fate-footer";
 import { FateMain } from "./fate-main";
 import { FateNavbar } from "./fate-navbar";
+import { FateToastStack } from "./fate-toast-stack";
 import { useFateActions } from "./use-fate-actions";
 import { useFateSnapshot } from "./use-fate-snapshot";
 import { useLifecycleProgress } from "./use-lifecycle-progress";
@@ -122,18 +123,17 @@ function FatePageContent({ hasPrivy }: { hasPrivy: boolean }) {
         onSecondaryAction={(kind) => void actions.beginSecondaryAction(kind)}
         review={actions.review}
         transactionBusy={actions.transactionBusy}
-        txMessage={actions.txMessage}
         txState={actions.txState}
         wallet={wallet}
         walletStatus={walletStatus}
         onWithdrawalSharesChange={setWithdrawalShares}
       />
       <FateFooter network={networkLabel()} programAddress={programAddress} />
-      {error ? (
-        <div className="error-toast">
-          Live state unavailable: {error}. Check the configured RPC and deployed program ID.
-        </div>
-      ) : null}
+      <FateToastStack
+        error={error}
+        transactionMessage={actions.txMessage}
+        transactionState={actions.txState}
+      />
     </main>
   );
 }

@@ -10,17 +10,12 @@ import {
   type StakerPositionAccount,
 } from "../domain/fate";
 import type { FateTransactionState } from "../lib/transactions";
+import type { ReviewAction } from "./use-fate-actions";
 import type { WalletStatus } from "./use-wallet-session";
 
-const SOL = 1_000_000_000n;
+export type { ReviewAction } from "./use-fate-actions";
 
-export type ReviewAction =
-  | { kind: "deposit"; amountLamports: bigint; amountLabel: string }
-  | { kind: "refund"; amountLamports: bigint; amountLabel: string }
-  | { kind: "withdraw"; shares: bigint; amountLabel: string }
-  | { kind: "claim"; amountLamports: bigint; amountLabel: string }
-  | { kind: "claim-withdrawal"; amountLamports: bigint; amountLabel: string }
-  | { kind: "progress"; action: "activate" | "settle"; amountLabel: string };
+const SOL = 1_000_000_000n;
 
 type SecondaryActionKind = Exclude<ReviewAction["kind"], "deposit" | "progress">;
 
@@ -278,10 +273,18 @@ export function FateMain({
                 <strong>{review.amountLabel}</strong>
               </div>
               <div className="transaction-review-row">
+                <span>Account effects</span>
+                <strong>{reviewEffects(review)}</strong>
+              </div>
+              <div className="transaction-review-row">
                 <span>Network / fee payer</span>
                 <strong>
                   {network} · {wallet ? compactAddress(wallet.address) : "—"}
                 </strong>
+              </div>
+              <div className="transaction-review-row">
+                <span>Transaction state</span>
+                <strong>{txState ? transactionStateLabel(txState) : "Ready to simulate"}</strong>
               </div>
               <p className="terms-note">
                 Fate program: {programAddress?.slice(0, 8) ?? "—"}… · wallet fee shown next.
@@ -381,6 +384,23 @@ function Term({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function reviewEffects(review: ReviewAction) {
+  if (review.kind === "progress") {
+    return review.action === "activate"
+      ? "Current draw moves to Activated"
+      : "Current draw settles and opens the next draw";
+  }
+  if (review.kind === "deposit") {
+    return review.side === "player"
+      ? "Player position and draw pool increase"
+      : "Staker position and vault shares increase";
+  }
+  if (review.kind === "refund") return "Player position closes; pending SOL returns";
+  if (review.kind === "withdraw") return "Staker shares decrease; withdrawal becomes claimable";
+  if (review.kind === "claim") return "Player claim balance closes; SOL returns";
+  return "Staker withdrawal liability closes; SOL returns";
 }
 
 function ModeButton({

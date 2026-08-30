@@ -41,8 +41,20 @@ test("browser RPC reads fail over in order and stop after the first success", as
 test("browser RPC reads report every failed endpoint", async () => {
   await assert.rejects(
     readWithRpcFallback(["https://first.example", "https://second.example"], async (_, url) => {
-      throw new Error(`${url} unavailable`);
+      throw new TypeError(`${url} unavailable`);
     }),
     /first\.example: https:\/\/first\.example unavailable; https:\/\/second\.example: https:\/\/second\.example unavailable/,
   );
+});
+
+test("browser RPC reads surface non-transport failures without trying fallbacks", async () => {
+  const attempted: string[] = [];
+  await assert.rejects(
+    readWithRpcFallback(["https://invalid.example", "https://backup.example"], async (_, url) => {
+      attempted.push(url);
+      throw new Error("Account is not owned by Fate");
+    }),
+    /Account is not owned by Fate/,
+  );
+  assert.deepEqual(attempted, ["https://invalid.example"]);
 });

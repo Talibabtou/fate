@@ -20,7 +20,11 @@ import {
   weightPageAddress,
 } from "../../../domain/fate/index.ts";
 import { publicConfigIssues } from "../../../lib/public-config.ts";
-import { readWithRpcFallback, type SolanaRpc } from "../../../lib/rpc/client.ts";
+import {
+  NonRetryableRpcReadError,
+  readWithRpcFallback,
+  type SolanaRpc,
+} from "../../../lib/rpc/client.ts";
 import { fateProgramAddress, rpcReadUrls } from "../../../lib/rpc/config.ts";
 import { decodeRpcData, readAccount } from "./account-reader.ts";
 
@@ -36,7 +40,9 @@ export async function readDevSettlementParticipants(
 
   return readWithRpcFallback(rpcReadUrls(), async (rpc) => {
     const { draw: drawTree, vault: vaultAddress } = await fateAddresses(programAddress, draw.id);
-    const vault = decodeStakerVault(
+    const vault = decodeSettlementAccount(
+      "Staker vault",
+      decodeStakerVault,
       await readAccount(
         rpc,
         vaultAddress,
@@ -80,7 +86,9 @@ async function selectLeaf(rpc: SolanaRpc, programAddress: Address, tree: Address
     const remainingBits = BigInt((WEIGHT_TREE_DEPTH - level) * 4);
     const prefix = level === 0 ? 0n : (index >> remainingBits) << remainingBits;
     const pageAddress = await weightPageAddress(programAddress, tree, level, prefix);
-    const page = decodeWeightPage(
+    const page = decodeSettlementAccount(
+      "weight page",
+      decodeWeightPage,
       await readAccount(
         rpc,
         pageAddress,
@@ -95,7 +103,9 @@ async function selectLeaf(rpc: SolanaRpc, programAddress: Address, tree: Address
     target = selected.remainder;
   }
   const selectedIndex = selectWeightedIndex(pages, tree, originalTarget);
-  if (selectedIndex !== index) throw new Error("weight path selection was not stable");
+  if (selectedIndex !== index) {
+    throw new NonRetryableRpcReadError("weight path selection was not stable");
+  }
   return index;
 }
 
@@ -135,26 +145,48 @@ async function findPositionByLeaf(
     })
     .send();
   if (accounts.length !== 1) {
-    throw new Error(
+    throw new NonRetryableRpcReadError(
       `expected one ${side} position at leaf ${leafIndex}, received ${accounts.length}`,
     );
   }
   const account = accounts[0];
   if (account.account.owner !== programAddress) {
-    throw new Error(`${side} position has an unexpected owner`);
+    throw new NonRetryableRpcReadError(`${side} position has an unexpected owner`);
   }
   if (side === "player") {
-    const position = decodePlayerPosition(decodeRpcData(account.account.data));
+    const position = decodeSettlementAccount(
+      "Player position",
+      decodePlayerPosition,
+      decodeRpcData(account.account.data),
+    );
     if (position.leafIndex !== leafIndex || position.drawId !== drawId || position.weight === 0n) {
-      throw new Error("Player position failed leaf validation");
+      throw new NonRetryableRpcReadError("Player position failed leaf validation");
     }
     return position;
   }
-  const position = decodeStakerPosition(decodeRpcData(account.account.data));
+  const position = decodeSettlementAccount(
+    "Staker position",
+    decodeStakerPosition,
+    decodeRpcData(account.account.data),
+  );
   if (position.leafIndex !== leafIndex || position.activeShares === 0n) {
-    throw new Error("Staker position failed leaf validation");
+    throw new NonRetryableRpcReadError("Staker position failed leaf validation");
   }
   return position;
+}
+
+function decodeSettlementAccount<T>(
+  label: string,
+  decoder: (data: Uint8Array) => T,
+  data: Uint8Array,
+) {
+  try {
+    return decoder(data);
+  } catch (error) {
+    throw new NonRetryableRpcReadError(
+      `Invalid ${label} account data: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 function encodeU64ForMemcmp(value: bigint) {

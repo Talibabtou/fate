@@ -7,7 +7,7 @@
     "build": "next build --webpack",
     "start": "next start",
     "check": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test src/domain/fate/client.test.ts src/lib/public-config.test.ts src/lib/rpc/client.test.ts"
+    "test": "node --experimental-strip-types --test src/app/use-fate-actions.test.ts src/app/use-lifecycle-progress.test.ts src/domain/fate/client.test.ts src/features/fate/data/account-reader.test.ts src/lib/public-config.test.ts src/lib/rpc/client.test.ts"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",

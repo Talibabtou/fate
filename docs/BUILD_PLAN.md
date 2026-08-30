@@ -77,6 +77,7 @@ The client must show any extra fee payer, account creation, settlement effect, a
 - [x] Track Player liabilities, Staker withdrawal liabilities, rent reserves, protocol fees, and rounding dust explicitly.
 - [x] Compare simulator vectors with Rust math byte for byte.
 - [x] Run capacity, contention, packet-size, compute, and rent measurements for deposit, refund, withdrawal, activation, settlement, claims, and cleanup.
+- [x] Use an explicit transaction compute limit for first-account initialization and retain a separate measured usage ceiling for SBF regressions.
 - [x] Expand substituted-account and weighted-tree fuzzing beyond the current deterministic matrix.
 - [x] Rerun the full host Rust, SBF, production-feature, and app test matrix after lifecycle changes.
 
@@ -110,12 +111,12 @@ The current page is a working prototype. The first extraction into a navbar, mai
 
 ### 2. Centralize configuration and wallet state
 
-- [ ] Add one typed public configuration module for network, program ID, primary RPC, fallback RPCs, WSS RPC, and Privy app ID.
-- [ ] Fail clearly when required devnet configuration is missing or invalid; don't scatter direct `process.env` reads through the page.
-- [ ] Keep wallet-only Privy access for external Solana wallets; don't create embedded wallets in v1.
-- [ ] Add a `useWalletSession` boundary that owns the selected wallet, address, network status, balance, connect, and disconnect state.
-- [ ] Handle multiple available wallets deliberately instead of assuming `wallets[0]` is always the user's active wallet.
-- [ ] Remove or document the custom `.env.local` loading in `next.config.ts` so build-time configuration has one predictable source.
+- [x] Add one typed public configuration module for network, program ID, primary RPC, fallback RPCs, WSS RPC, and Privy app ID.
+- [x] Fail clearly when required devnet configuration is missing or invalid; don't scatter direct `process.env` reads through the page.
+- [x] Keep wallet-only Privy access for external Solana wallets; don't create embedded wallets in v1.
+- [x] Add a `useWalletSession` boundary that owns the selected wallet, address, network status, balance, connect, and disconnect state.
+- [x] Handle multiple available wallets deliberately instead of assuming `wallets[0]` is always the user's active wallet.
+- [x] Remove or document the custom `.env.local` loading in `next.config.ts` so build-time configuration has one predictable source.
 
 ### 3. Make reads and lifecycle state dependable
 

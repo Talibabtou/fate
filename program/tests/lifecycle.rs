@@ -7,6 +7,7 @@ use solana_program_test::{processor, ProgramTest, ProgramTestContext};
 use solana_sdk::clock::Clock;
 use solana_sdk::{
     account::Account,
+    compute_budget::ComputeBudgetInstruction,
     instruction::Instruction,
     signature::{Keypair, Signer},
     transaction::Transaction,
@@ -14,6 +15,9 @@ use solana_sdk::{
 use steel::{AccountDeserialize, Discriminator};
 
 const SOL: u64 = 1_000_000_000;
+const COMPUTE_UNIT_LIMIT: u32 = 400_000;
+#[cfg(feature = "dev-randomness")]
+const MAX_EXPECTED_COMPUTE_UNITS: u64 = 250_000;
 
 async fn start() -> (ProgramTestContext, Pubkey, Keypair, Pubkey) {
     let program_id = Pubkey::new_unique();
@@ -1268,7 +1272,7 @@ async fn weighted_path_operations_reconcile_economics_and_budget() {
         settle_staker_units,
         close_draw_units,
     ] {
-        assert!(units < 1_400_000);
+        assert!(units <= MAX_EXPECTED_COMPUTE_UNITS);
     }
 }
 
@@ -1366,7 +1370,10 @@ async fn signed_transaction(
     let mut signers = vec![&context.payer];
     signers.extend_from_slice(extra);
     Transaction::new_signed_with_payer(
-        &[instruction],
+        &[
+            ComputeBudgetInstruction::set_compute_unit_limit(COMPUTE_UNIT_LIMIT),
+            instruction,
+        ],
         Some(&context.payer.pubkey()),
         &signers,
         blockhash,
@@ -1396,7 +1403,12 @@ async fn measure(
 ) -> (u64, usize) {
     let transaction = signed_transaction(context, instruction, extra).await;
     let packet_bytes = bincode::serialize(&transaction).unwrap().len();
-    (simulate_units(context, transaction).await, packet_bytes)
+    let units = simulate_units(context, transaction).await;
+    assert!(
+        units <= MAX_EXPECTED_COMPUTE_UNITS,
+        "measured {units} compute units, expected at most {MAX_EXPECTED_COMPUTE_UNITS}"
+    );
+    (units, packet_bytes)
 }
 
 #[cfg(feature = "dev-randomness")]
@@ -1419,7 +1431,10 @@ async fn send(
     let mut signers = vec![&context.payer];
     signers.extend_from_slice(extra);
     let transaction = Transaction::new_signed_with_payer(
-        &[instruction],
+        &[
+            ComputeBudgetInstruction::set_compute_unit_limit(COMPUTE_UNIT_LIMIT),
+            instruction,
+        ],
         Some(&context.payer.pubkey()),
         &signers,
         blockhash,

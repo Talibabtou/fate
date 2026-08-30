@@ -19,6 +19,7 @@ import {
   WEIGHT_TREE_DEPTH,
   weightPageAddress,
 } from "../../../domain/fate/index.ts";
+import { publicConfigIssues } from "../../../lib/public-config.ts";
 import { readWithRpcFallback, type SolanaRpc } from "../../../lib/rpc/client.ts";
 import { fateProgramAddress, rpcReadUrls } from "../../../lib/rpc/config.ts";
 import { decodeRpcData, readAccount } from "./account-reader.ts";
@@ -26,8 +27,12 @@ import { decodeRpcData, readAccount } from "./account-reader.ts";
 export async function readDevSettlementParticipants(
   draw: DrawAccount,
 ): Promise<SettlementParticipants> {
+  const configIssues = publicConfigIssues();
+  if (configIssues.length > 0) {
+    throw new Error(configIssues.join("; "));
+  }
   const programAddress = fateProgramAddress();
-  if (!programAddress) throw new Error("NEXT_PUBLIC_FATE_PROGRAM_ID is not configured");
+  if (!programAddress) throw new Error("Fate program ID is invalid");
 
   return readWithRpcFallback(rpcReadUrls(), async (rpc) => {
     const { draw: drawTree, vault: vaultAddress } = await fateAddresses(programAddress, draw.id);

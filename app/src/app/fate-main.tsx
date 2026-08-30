@@ -10,7 +10,7 @@ import {
   type StakerPositionAccount,
 } from "../domain/fate";
 import type { FateTransactionState } from "../lib/transactions";
-import type { WalletStatus } from "./wallet-controls";
+import type { WalletStatus } from "./use-wallet-session";
 
 const SOL = 1_000_000_000n;
 

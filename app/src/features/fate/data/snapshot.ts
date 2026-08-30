@@ -24,6 +24,7 @@ import {
   type StakerVaultAccount,
   stakerPositionAddress,
 } from "../../../domain/fate/index.ts";
+import { publicConfigIssues } from "../../../lib/public-config.ts";
 import { readWithRpcFallback } from "../../../lib/rpc/client.ts";
 import { fateProgramAddress, rpcReadUrls } from "../../../lib/rpc/config.ts";
 import { readAccount, readOptionalAccount } from "./account-reader.ts";
@@ -44,8 +45,12 @@ export type FateSnapshot = {
 };
 
 export async function readFateSnapshot(walletAddress?: Address): Promise<FateSnapshot> {
+  const configIssues = publicConfigIssues();
+  if (configIssues.length > 0) {
+    throw new Error(configIssues.join("; "));
+  }
   const programAddress = fateProgramAddress();
-  if (!programAddress) throw new Error("NEXT_PUBLIC_FATE_PROGRAM_ID is not configured");
+  if (!programAddress) throw new Error("Fate program ID is invalid");
 
   return readWithRpcFallback(rpcReadUrls(), async (rpc) => {
     const { config: configAddress } = await fateAddresses(programAddress, 0n);

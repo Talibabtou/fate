@@ -1,57 +1,14 @@
 "use client";
 
-import { useConnectWallet } from "@privy-io/react-auth";
-import { type ConnectedStandardSolanaWallet, useWallets } from "@privy-io/react-auth/solana";
-import { address } from "@solana/kit";
 import { useEffect, useRef, useState } from "react";
-import { privyWalletChain } from "../lib/privy-wallet";
-import { readSolBalance } from "../lib/rpc/client";
+import type { WalletSession } from "./use-wallet-session";
 
-export type WalletStatus =
-  | "unavailable"
-  | "checking"
-  | "disconnected"
-  | "wrong-network"
-  | "connected";
+export type { WalletStatus } from "./use-wallet-session";
 
-export function WalletControls({
-  onStatusChange,
-  onAddressChange,
-  onWalletChange,
-}: {
-  onStatusChange: (status: WalletStatus) => void;
-  onAddressChange: (address: string | null) => void;
-  onWalletChange: (wallet: ConnectedStandardSolanaWallet | null) => void;
-}) {
-  const { connectWallet } = useConnectWallet();
-  const { ready, wallets } = useWallets();
-  const wallet = wallets[0];
-  const chain = privyWalletChain();
-  const [disconnecting, setDisconnecting] = useState(false);
+export function WalletControls({ session }: { session: WalletSession }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const onExpectedNetwork = Boolean(
-    wallet &&
-      chain &&
-      wallet.standardWallet.accounts.some((account) => account.chains.includes(chain)),
-  );
-  const [balance, setBalance] = useState<bigint | null>(null);
-
-  useEffect(() => {
-    const status: WalletStatus = !ready
-      ? "checking"
-      : !wallet
-        ? "disconnected"
-        : !chain || !onExpectedNetwork
-          ? "wrong-network"
-          : "connected";
-    onStatusChange(status);
-  }, [chain, onExpectedNetwork, onStatusChange, ready, wallet]);
-
-  useEffect(() => {
-    onAddressChange(wallet?.address ?? null);
-    onWalletChange(wallet ?? null);
-  }, [onAddressChange, onWalletChange, wallet]);
+  const { wallet } = session;
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -70,43 +27,28 @@ export function WalletControls({
     if (!wallet) setMenuOpen(false);
   }, [wallet]);
 
-  useEffect(() => {
-    let active = true;
-    if (!wallet || !onExpectedNetwork) {
-      setBalance(null);
-      return () => {
-        active = false;
-      };
-    }
-
-    void readSolBalance(address(wallet.address)).then(
-      (nextBalance) => {
-        if (active) setBalance(nextBalance);
-      },
-      () => {
-        if (active) setBalance(null);
-      },
-    );
-
-    return () => {
-      active = false;
-    };
-  }, [onExpectedNetwork, wallet]);
-
-  async function disconnectWallet() {
-    if (!wallet) return;
-    setDisconnecting(true);
-    try {
-      await wallet.disconnect();
-    } finally {
-      setDisconnecting(false);
-    }
-  }
-
-  if (!ready) return <span className="wallet-state">Checking wallet…</span>;
+  if (!session.ready) return <span className="wallet-state">Checking wallet…</span>;
   if (!wallet) {
+    if (session.status === "select-wallet") {
+      return (
+        <div className="wallet-menu" ref={menuRef}>
+          <button
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            className="wallet-button"
+            onClick={() => setMenuOpen((open) => !open)}
+            type="button"
+          >
+            Choose wallet
+          </button>
+          {menuOpen ? (
+            <WalletChoices session={session} onSelect={() => setMenuOpen(false)} />
+          ) : null}
+        </div>
+      );
+    }
     return (
-      <button className="wallet-button" onClick={() => connectWallet()} type="button">
+      <button className="wallet-button" onClick={session.connect} type="button">
         Connect wallet
       </button>
     );
@@ -122,8 +64,10 @@ export function WalletControls({
         title={wallet.address}
         type="button"
       >
-        <span className={onExpectedNetwork ? "wallet-dot is-connected" : "wallet-dot is-wrong"} />
-        <span className="wallet-trigger-balance">{formatWalletBalance(balance)}</span>
+        <span
+          className={session.onExpectedNetwork ? "wallet-dot is-connected" : "wallet-dot is-wrong"}
+        />
+        <span className="wallet-trigger-balance">{formatWalletBalance(session.balance)}</span>
         <span aria-hidden="true" className={menuOpen ? "wallet-chevron is-open" : "wallet-chevron"}>
           ↓
         </span>
@@ -137,27 +81,55 @@ export function WalletControls({
           </div>
           <div className="wallet-popover-balance">
             <span>Balance</span>
-            <strong>{formatWalletBalance(balance)}</strong>
+            <strong>{formatWalletBalance(session.balance)}</strong>
           </div>
-          {!onExpectedNetwork ? (
+          {!session.onExpectedNetwork ? (
             <p className="wallet-network-warning">
-              {chain
+              {session.expectedChain
                 ? "Switch to the configured Solana network."
-                : "Privy signing is available on devnet."}
+                : "Privy external wallets support devnet, testnet, or mainnet."}
             </p>
+          ) : null}
+          {session.availableWallets.length > 1 ? (
+            <WalletChoices session={session} onSelect={() => setMenuOpen(false)} />
           ) : null}
           <button
             className="wallet-disconnect"
-            disabled={disconnecting}
-            onClick={() => void disconnectWallet()}
+            disabled={session.disconnecting}
+            onClick={() => void session.disconnect()}
             role="menuitem"
             type="button"
           >
-            {disconnecting ? "Disconnecting…" : "Disconnect"}
+            {session.disconnecting ? "Disconnecting…" : "Disconnect"}
           </button>
         </div>
       ) : null}
     </div>
+  );
+}
+
+function WalletChoices({ session, onSelect }: { session: WalletSession; onSelect: () => void }) {
+  return (
+    <fieldset className="wallet-choices">
+      <legend className="wallet-popover-label">Available wallets</legend>
+      {session.availableWallets.map((candidate) => (
+        <button
+          className={
+            candidate.address === session.address ? "wallet-choice is-selected" : "wallet-choice"
+          }
+          key={candidate.address}
+          onClick={() => {
+            session.selectWallet(candidate.address);
+            onSelect();
+          }}
+          role="menuitem"
+          type="button"
+        >
+          <span className="mono">{compactAddress(candidate.address)}</span>
+          {candidate.address === session.address ? <span aria-hidden="true">✓</span> : null}
+        </button>
+      ))}
+    </fieldset>
   );
 }
 

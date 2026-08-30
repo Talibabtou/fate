@@ -1,20 +1,16 @@
 "use client";
 
-import type { ConnectedStandardSolanaWallet } from "@privy-io/react-auth/solana";
-import { StaticWalletControls, WalletControls, type WalletStatus } from "./wallet-controls";
+import type { WalletSession } from "./use-wallet-session";
+import { StaticWalletControls, WalletControls } from "./wallet-controls";
 
 export function FateNavbar({
   hasPrivy,
   network,
-  onAddressChange,
-  onStatusChange,
-  onWalletChange,
+  walletSession,
 }: {
   hasPrivy: boolean;
   network: string;
-  onAddressChange: (address: string | null) => void;
-  onStatusChange: (status: WalletStatus) => void;
-  onWalletChange: (wallet: ConnectedStandardSolanaWallet | null) => void;
+  walletSession: WalletSession;
 }) {
   return (
     <header className="fate-header">
@@ -24,15 +20,7 @@ export function FateNavbar({
       </div>
       <div className="header-actions">
         <span className="network-mark">{network}</span>
-        {hasPrivy ? (
-          <WalletControls
-            onAddressChange={onAddressChange}
-            onStatusChange={onStatusChange}
-            onWalletChange={onWalletChange}
-          />
-        ) : (
-          <StaticWalletControls />
-        )}
+        {hasPrivy ? <WalletControls session={walletSession} /> : <StaticWalletControls />}
       </div>
     </header>
   );

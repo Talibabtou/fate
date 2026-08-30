@@ -393,6 +393,43 @@ input:focus-visible {
   font-weight: 700;
 }
 
+.wallet-choices {
+  display: grid;
+  gap: 0.35rem;
+  min-inline-size: 0;
+  border-bottom: 1px solid var(--line);
+  border-inline: 0;
+  border-top: 0;
+  margin: 0;
+  padding-bottom: 0.75rem;
+}
+
+.wallet-choices legend {
+  padding: 0;
+}
+
+.wallet-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0.45rem 0.5rem;
+  font-size: 0.68rem;
+  text-align: left;
+}
+
+.wallet-choice:hover,
+.wallet-choice.is-selected {
+  border-color: var(--line);
+  background: rgba(236, 241, 232, 0.05);
+  color: var(--ink);
+}
+
 .wallet-network-warning {
   margin: 0 0 0.75rem;
   color: var(--warm);

@@ -18,6 +18,17 @@ import { formatRpcError } from "./errors.ts";
 import type { FateTransactionResult, FateTransactionState } from "./types.ts";
 import { toBase64WireTransaction } from "./wire.ts";
 
+const COMPUTE_BUDGET_PROGRAM = address("ComputeBudget111111111111111111111111111111");
+const FATE_COMPUTE_UNIT_LIMIT = 400_000;
+
+function setComputeUnitLimitInstruction(): Instruction {
+  const data = new Uint8Array(5);
+  // Compute Budget's SetComputeUnitLimit discriminator is 2, followed by LE u32 units.
+  data[0] = 2;
+  new DataView(data.buffer).setUint32(1, FATE_COMPUTE_UNIT_LIMIT, true);
+  return { programAddress: COMPUTE_BUDGET_PROGRAM, accounts: [], data };
+}
+
 /**
  * Simulate on, submit to, and confirm against the configured primary RPC only.
  * Read fallbacks are deliberately excluded from this lifecycle so a blockhash and
@@ -43,7 +54,11 @@ export async function executeFateTransaction({
     createTransactionMessage({ version: 0 }),
     (message) => setTransactionMessageFeePayer(feePayer, message),
     (message) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, message),
-    (message) => appendTransactionMessageInstructions([instruction], message),
+    (message) =>
+      appendTransactionMessageInstructions(
+        [setComputeUnitLimitInstruction(), instruction],
+        message,
+      ),
     (message) => compileTransaction(message),
   );
   const unsignedBytes = new Uint8Array(getTransactionEncoder().encode(transaction));

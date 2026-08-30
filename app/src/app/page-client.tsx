@@ -1,6 +1,5 @@
 "use client";
 
-import type { ConnectedStandardSolanaWallet } from "@privy-io/react-auth/solana";
 import { address, type Instruction } from "@solana/kit";
 import { useEffect, useState } from "react";
 import {
@@ -18,14 +17,14 @@ import {
   requestStakeWithdrawalInstruction,
 } from "../domain/fate";
 import { readDevSettlementParticipants } from "../features/fate/data/settlement-participants";
-import { fatePublicConfig } from "../lib/public-config";
+import { fatePublicConfig, publicConfigIssues } from "../lib/public-config";
 import { fateProgramAddress } from "../lib/rpc/config";
 import { executeFateTransaction, type FateTransactionState } from "../lib/transactions";
 import { FateFooter } from "./fate-footer";
 import { FateMain, type ReviewAction } from "./fate-main";
 import { FateNavbar } from "./fate-navbar";
 import { useFateSnapshot } from "./use-fate-snapshot";
-import type { WalletStatus } from "./wallet-controls";
+import { useWalletSession, WalletSessionProvider } from "./use-wallet-session";
 
 const SOL = 1_000_000_000n;
 const phaseLabels: Record<number, string> = {
@@ -38,8 +37,19 @@ const phaseLabels: Record<number, string> = {
 };
 
 export function FatePage() {
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const [wallet, setWallet] = useState<ConnectedStandardSolanaWallet | null>(null);
+  const hasPrivy = Boolean(fatePublicConfig.privyAppId);
+  return (
+    <WalletSessionProvider enabled={hasPrivy}>
+      <FatePageContent hasPrivy={hasPrivy} />
+    </WalletSessionProvider>
+  );
+}
+
+function FatePageContent({ hasPrivy }: { hasPrivy: boolean }) {
+  const walletSession = useWalletSession();
+  const walletAddress = walletSession.address;
+  const wallet = walletSession.wallet;
+  const walletStatus = walletSession.status;
   const { snapshot, error, refreshing, refresh } = useFateSnapshot(
     walletAddress ? address(walletAddress) : undefined,
   );
@@ -47,7 +57,6 @@ export function FatePage() {
   const [amount, setAmount] = useState("0.10");
   const [withdrawalShares, setWithdrawalShares] = useState("");
   const [now, setNow] = useState(() => Date.now());
-  const [walletStatus, setWalletStatus] = useState<WalletStatus>("unavailable");
   const [review, setReview] = useState<ReviewAction | null>(null);
   const [txState, setTxState] = useState<FateTransactionState | null>(null);
   const [txMessage, setTxMessage] = useState<string | null>(null);
@@ -72,7 +81,6 @@ export function FatePage() {
   const progressAction =
     config && draw ? availableProgressAction(config, draw, BigInt(Math.floor(now / 1000))) : null;
   const isPlayer = mode === "player";
-  const hasPrivy = Boolean(fatePublicConfig.privyAppId);
   const programAddress = fateProgramAddress();
   const transactionBusy =
     txState === "simulating" || txState === "awaiting-signature" || txState === "submitted";
@@ -209,7 +217,7 @@ export function FatePage() {
     if (!review || !wallet || !snapshot || !draw) return;
     if (!programAddress) {
       setTxState("failed");
-      setTxMessage("NEXT_PUBLIC_FATE_PROGRAM_ID is not configured.");
+      setTxMessage(publicConfigIssues()[0] ?? "Fate public configuration is invalid.");
       return;
     }
     try {
@@ -279,13 +287,7 @@ export function FatePage() {
 
   return (
     <main className="fate-page">
-      <FateNavbar
-        hasPrivy={hasPrivy}
-        network={networkLabel()}
-        onAddressChange={setWalletAddress}
-        onStatusChange={setWalletStatus}
-        onWalletChange={setWallet}
-      />
+      <FateNavbar hasPrivy={hasPrivy} network={networkLabel()} walletSession={walletSession} />
       <FateMain
         amount={amount}
         config={config}

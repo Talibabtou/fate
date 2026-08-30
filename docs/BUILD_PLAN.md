@@ -52,6 +52,7 @@ The workflow now reaches a successful Vercel deployment for app changes. The rem
 - [x] Include the root `package.json` and workflow files in change detection.
 - [ ] Add a dedicated workflow syntax and action-reference validation step.
 - [ ] Stop passing `VERCEL_TOKEN` through CLI arguments; let the Vercel CLI read it from the job environment and keep token values out of process arguments.
+- [x] Capture Vercel deployment URLs and retry a public smoke check before reporting preview or production deployment success.
 - [ ] Publish a concise job summary on failure with the failed gate, relevant command, and link to the run so failures can feed directly into the agent repair loop.
 
 ## Lifecycle migration
@@ -139,13 +140,13 @@ The current page is a working prototype. The first extraction into a navbar, mai
 
 ### 5. Break `FateMain` into focused Fate components
 
-- [ ] Extract `DrawHeader` and `DrawProgress`.
-- [ ] Extract `LifecyclePrompt`.
-- [ ] Extract `PositionActionForm` and secondary actions.
-- [ ] Extract `TransactionReview`.
-- [ ] Extract `DrawTerms` and `RecentDraws`.
-- [ ] Keep component props small and use a Fate view model where several components need the same derived values.
-- [ ] Keep Fate-specific components local; don't introduce a generic design system until a second real page needs it.
+- [x] Extract `DrawHeader` and `DrawProgress`.
+- [x] Extract `LifecyclePrompt`.
+- [x] Extract `PositionActionForm` and secondary actions.
+- [x] Extract `TransactionReview`.
+- [x] Extract `DrawTerms` and `RecentDraws`.
+- [x] Keep component props small and use a Fate view model where several components need the same derived values.
+- [x] Keep Fate-specific components local; don't introduce a generic design system until a second real page needs it.
 
 ### 6. Finish the transaction UX before shared devnet testing
 

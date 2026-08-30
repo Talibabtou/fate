@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { activationThreshold, type DrawAccount, DrawPhase } from "../domain/fate";
 import { fatePublicConfig } from "../lib/public-config";
 import { fateProgramAddress } from "../lib/rpc/config";
+import type { FateViewModel } from "./fate/fate-view-model";
 import { FateFooter } from "./fate-footer";
 import { FateMain } from "./fate-main";
 import { FateNavbar } from "./fate-navbar";
@@ -86,19 +87,31 @@ function FatePageContent({ hasPrivy }: { hasPrivy: boolean }) {
     withdrawalShares,
     onWithdrawalSharesChange: setWithdrawalShares,
   });
+  const view: FateViewModel = {
+    activationThresholdLamports,
+    config,
+    draw,
+    isPlayer,
+    mode,
+    network,
+    now,
+    phase,
+    playerPosition: snapshot?.playerPosition ?? null,
+    programAddress,
+    progress,
+    progressAction: lifecycle.dueAction,
+    refreshing,
+    stakerPosition: snapshot?.stakerPosition ?? null,
+    stakerTvlLamports,
+    withdrawalShares,
+  };
 
   return (
     <main className="fate-page">
       <FateNavbar hasPrivy={hasPrivy} network={networkLabel()} walletSession={walletSession} />
       <FateMain
+        view={view}
         amount={amount}
-        config={config}
-        draw={draw}
-        activationThresholdLamports={activationThresholdLamports}
-        isPlayer={isPlayer}
-        mode={mode}
-        network={networkLabel()}
-        now={now}
         onAmountChange={setAmount}
         onCancelReview={actions.cancelReview}
         onConfirmReview={() => void actions.confirmReview()}
@@ -107,21 +120,12 @@ function FatePageContent({ hasPrivy }: { hasPrivy: boolean }) {
         onProgressAction={() => void actions.beginProgressAction()}
         onRefresh={() => void refresh()}
         onSecondaryAction={(kind) => void actions.beginSecondaryAction(kind)}
-        phase={phase}
-        playerPosition={snapshot?.playerPosition ?? null}
-        programAddress={programAddress}
-        progress={progress}
-        progressAction={lifecycle.dueAction}
-        refreshing={refreshing}
         review={actions.review}
-        stakerPosition={snapshot?.stakerPosition ?? null}
-        stakerTvlLamports={stakerTvlLamports}
         transactionBusy={actions.transactionBusy}
         txMessage={actions.txMessage}
         txState={actions.txState}
         wallet={wallet}
         walletStatus={walletStatus}
-        withdrawalShares={withdrawalShares}
         onWithdrawalSharesChange={setWithdrawalShares}
       />
       <FateFooter network={networkLabel()} programAddress={programAddress} />

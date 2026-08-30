@@ -31,7 +31,7 @@ export type ReviewAction =
   | { kind: "claim-withdrawal"; amountLamports: bigint; amountLabel: string }
   | { kind: "progress"; action: LifecycleAction; drawId: bigint; amountLabel: string };
 
-type SecondaryActionKind = Exclude<ReviewAction["kind"], "deposit" | "progress">;
+export type SecondaryActionKind = Exclude<ReviewAction["kind"], "deposit" | "progress">;
 
 export function useFateActions({
   amount,

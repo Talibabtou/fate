@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { WalletSession } from "./use-wallet-session";
 import { StaticWalletControls, WalletControls } from "./wallet-controls";
 
@@ -12,11 +13,19 @@ export function FateNavbar({
   network: string;
   walletSession: WalletSession;
 }) {
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const update = () => setScrolled(window.scrollY > 8);
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    return () => window.removeEventListener("scroll", update);
+  }, []);
+
   return (
-    <header className="fate-header">
+    <header className={scrolled ? "fate-header is-scrolled" : "fate-header"}>
       <div className="brand-lockup">
         <span className="display-font brand-name">Fate</span>
-        <span className="brand-note">one draw at a time</span>
       </div>
       <div className="header-actions">
         <span className="network-mark">{network}</span>

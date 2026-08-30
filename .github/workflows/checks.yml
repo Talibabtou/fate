@@ -24,8 +24,8 @@ jobs:
     name: Detect changed areas
     runs-on: ubuntu-latest
     outputs:
-      app: ${{ steps.filter.outputs.app == 'true' || steps.filter.outputs.shared == 'true' || github.event_name == 'workflow_dispatch' }}
-      program: ${{ steps.filter.outputs.program == 'true' || steps.filter.outputs.shared == 'true' || github.event_name == 'workflow_dispatch' }}
+      app: ${{ steps.filter.outputs.app == 'true' || steps.filter.outputs.app_shared == 'true' || github.event_name == 'workflow_dispatch' }}
+      program: ${{ steps.filter.outputs.program == 'true' || steps.filter.outputs.program_shared == 'true' || github.event_name == 'workflow_dispatch' }}
 
     steps:
       - uses: actions/checkout@v6
@@ -40,7 +40,7 @@ jobs:
             program:
               - 'api/**'
               - 'program/**'
-            shared:
+            app_shared:
               - '.github/workflows/**'
               - '.github/actions/**'
               - 'package.json'
@@ -48,6 +48,7 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - 'biome.json'
+            program_shared:
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
@@ -257,7 +258,22 @@ jobs:
         run: vercel build --token="$VERCEL_TOKEN"
 
       - name: Deploy prebuilt preview
-        run: vercel deploy --prebuilt --yes --token="$VERCEL_TOKEN"
+        id: deploy-preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          vercel deploy --prebuilt --yes --token="$VERCEL_TOKEN" 2>&1 | tee vercel-deploy.log
+          deployment_url="$(sed -nE 's/^[[:space:]]*Preview[[:space:]]+(https?:\/\/[^[:space:]]+).*/\1/p' vercel-deploy.log | head -n 1)"
+          if [[ -z "$deployment_url" ]]; then
+            echo "::error::Vercel did not return a preview deployment URL"
+            exit 1
+          fi
+          echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke check preview deployment
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy-preview.outputs.url }}
+        run: curl --fail --silent --show-error --location --retry 10 --retry-all-errors --retry-delay 3 --retry-max-time 90 "$DEPLOYMENT_URL/"
 
   deploy-production:
     name: Deploy production to Vercel
@@ -322,4 +338,19 @@ jobs:
         run: vercel build --prod --token="$VERCEL_TOKEN"
 
       - name: Deploy prebuilt production
-        run: vercel deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN"
+        id: deploy-production
+        shell: bash
+        run: |
+          set -euo pipefail
+          vercel deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN" 2>&1 | tee vercel-deploy.log
+          deployment_url="$(sed -nE 's/^[[:space:]]*Production[[:space:]]+(https?:\/\/[^[:space:]]+).*/\1/p' vercel-deploy.log | head -n 1)"
+          if [[ -z "$deployment_url" ]]; then
+            echo "::error::Vercel did not return a production deployment URL"
+            exit 1
+          fi
+          echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke check production deployment
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy-production.outputs.url }}
+        run: curl --fail --silent --show-error --location --retry 10 --retry-all-errors --retry-delay 3 --retry-max-time 90 "$DEPLOYMENT_URL/"

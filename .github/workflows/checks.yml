@@ -54,7 +54,7 @@ jobs:
               - 'rustfmt.toml'
 
   app-checks:
-    name: Biome, TypeScript, tests, and build
+    name: App checks
     needs: changes
     if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
@@ -82,7 +82,7 @@ jobs:
         run: pnpm app:build
 
   program-checks:
-    name: Format, host tests, and SBF lifecycle tests
+    name: Program checks
     needs: changes
     if: needs.changes.outputs.program == 'true'
     runs-on: ubuntu-latest
@@ -257,7 +257,7 @@ jobs:
         run: vercel build --token="$VERCEL_TOKEN"
 
       - name: Deploy prebuilt preview
-        run: vercel deploy --prebuilt --token="$VERCEL_TOKEN"
+        run: vercel deploy --prebuilt --yes --token="$VERCEL_TOKEN"
 
   deploy-production:
     name: Deploy production to Vercel
@@ -322,4 +322,4 @@ jobs:
         run: vercel build --prod --token="$VERCEL_TOKEN"
 
       - name: Deploy prebuilt production
-        run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+        run: vercel deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN"

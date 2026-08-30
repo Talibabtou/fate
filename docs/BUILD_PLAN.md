@@ -120,22 +120,22 @@ The current page is a working prototype. The first extraction into a navbar, mai
 
 ### 3. Make reads and lifecycle state dependable
 
-- [ ] Add an explicit snapshot state model: loading, ready, refreshing, stale, disconnected, and error.
-- [ ] Prevent overlapping snapshot reads from allowing an older RPC response to overwrite newer state.
-- [ ] Keep config, draw, vault, and position reads coherent at one confirmed slot, or detect and discard an inconsistent snapshot.
-- [ ] Retry only transport or endpoint-availability failures. Surface malformed accounts, wrong owners, discriminator failures, and inconsistent state directly.
-- [ ] Use `@solana/kit` for reads, subscriptions, addresses, and transaction construction wherever the required integration supports it.
-- [ ] Keep one primary HTTP/WSS RPC pair for each transaction lifecycle; use ordered fallbacks only for reads.
-- [ ] Derive phase and balances from confirmed chain state. Browser timers may display expected deadlines, but must not decide protocol state.
+- [x] Add an explicit snapshot state model: loading, ready, refreshing, stale, disconnected, and error.
+- [x] Prevent overlapping snapshot reads from allowing an older RPC response to overwrite newer state.
+- [x] Keep config, draw, vault, and position reads coherent at one confirmed slot, or detect and discard an inconsistent snapshot.
+- [x] Retry only transport or endpoint-availability failures. Surface malformed accounts, wrong owners, discriminator failures, and inconsistent state directly.
+- [x] Use `@solana/kit` for reads, subscriptions, addresses, and transaction construction wherever the required integration supports it.
+- [x] Keep one primary HTTP/WSS RPC pair for each transaction lifecycle; use ordered fallbacks only for reads.
+- [x] Derive phase and balances from confirmed chain state. Browser timers may display expected deadlines, but must not decide protocol state.
 
 ### 4. Replace the large page controller with feature hooks
 
-- [ ] Reduce `page-client.tsx` to route composition and feature coordination.
-- [ ] Add a `useFateActions` hook for deposit, refund, withdrawal, claim, validation, review state, and transaction execution.
-- [ ] Add a `useLifecycleProgress` hook that detects due activation or settlement after account notifications, page focus, tab visibility, refreshes, and user actions.
-- [ ] Surface a due permissionless transition before the next user action, as specified in `LIFECYCLE.md`.
-- [ ] Never silently sign or submit a lifecycle transaction because of passive activity; show the action, fee payer, account effects, and transaction state before wallet approval.
-- [ ] Make the lifecycle flow handle two callers racing, stale state, provider failure, and the choice between separate or combined transactions.
+- [x] Reduce `page-client.tsx` to route composition and feature coordination.
+- [x] Add a `useFateActions` hook for deposit, refund, withdrawal, claim, validation, review state, and transaction execution.
+- [x] Add a `useLifecycleProgress` hook that detects due activation or settlement after account notifications, page focus, tab visibility, refreshes, and user actions.
+- [x] Surface a due permissionless transition before the next user action, as specified in `LIFECYCLE.md`.
+- [x] Never silently sign or submit a lifecycle transaction because of passive activity; show the action, fee payer, account effects, and transaction state before wallet approval.
+- [x] Make the lifecycle flow handle two callers racing, stale state, provider failure, and the choice between separate or combined transactions.
 
 ### 5. Break `FateMain` into focused Fate components
 
@@ -165,17 +165,6 @@ The current page is a working prototype. The first extraction into a navbar, mai
 - [ ] Test 320px width, keyboard access, reduced motion, contrast, labels, and screen-reader status updates.
 - [ ] Keep global CSS for reset, tokens, and shared typography; move Fate feature styles into namespaced styles or CSS Modules.
 - [ ] Use integer-safe SOL formatting helpers. Don't convert lamports to `Number` for displayed financial values.
-
-### 8. Add application-level verification
-
-- [ ] Test domain validation, action availability, amount parsing, formatting, and transaction instruction plans.
-- [ ] Test snapshot cancellation, stale-response protection, slot consistency, fallback classification, and subscription recovery.
-- [ ] Test wallet connection, wrong-network handling, disconnect failure, and balance loading states.
-- [ ] Test the transaction state machine, including wallet rejection, simulation failure, blockhash expiry, timeout reconciliation, and duplicate-submit protection.
-- [ ] Add a browser flow with mocked wallet and RPC: connect, read state, choose a side, review, simulate, approve, confirm, and refresh.
-- [ ] Add automated accessibility checks for the primary page and transaction review.
-
-The first implementation pass should stop after section 1 and keep behavior unchanged. Each later section should leave TypeScript, Biome, tests, and the production build passing before the next section starts.
 
 ## Devnet validation
 

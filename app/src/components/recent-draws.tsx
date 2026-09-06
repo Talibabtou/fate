@@ -21,7 +21,7 @@ export function RecentDraws({
         <div>
           <span className="context-label">Recent settled draws</span>
           {recentDraws.length ? (
-            recentDraws.slice(0, 5).map(({ draw, playerPosition }) => (
+            recentDraws.slice(0, 10).map(({ draw, playerPosition }) => (
               <div className="history-row" key={draw.id.toString()}>
                 <div>
                   <p>

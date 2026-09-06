@@ -4,6 +4,7 @@ import type {
   DrawAccount,
   PlayerPositionAccount,
   StakerPositionAccount,
+  StakerVaultAccount,
 } from "../domain/fate";
 import type { RecentDrawSnapshot } from "../features/draw/snapshot";
 import type { LifecycleAction } from "../features/draw/types";
@@ -25,5 +26,6 @@ export type FateViewModel = {
   refreshing: boolean;
   stakerPosition: StakerPositionAccount | null;
   stakerTvlLamports: bigint | null;
+  vault: StakerVaultAccount | undefined;
   withdrawalShares: string;
 };

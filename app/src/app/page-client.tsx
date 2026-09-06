@@ -105,6 +105,7 @@ function FatePageContent({ hasPrivy }: { hasPrivy: boolean }) {
     refreshing,
     stakerPosition: snapshot?.stakerPosition ?? null,
     stakerTvlLamports,
+    vault: snapshot?.vault,
     withdrawalShares,
   };
 
@@ -125,8 +126,10 @@ function FatePageContent({ hasPrivy }: { hasPrivy: boolean }) {
           void actions.beginSecondaryAction(kind, historicalDrawId)
         }
         review={actions.review}
+        preview={actions.preview}
         transactionBusy={actions.transactionBusy}
         txState={actions.txState}
+        unknownSignature={actions.unknownSignature}
         wallet={wallet}
         walletStatus={walletStatus}
         onWithdrawalSharesChange={setWithdrawalShares}

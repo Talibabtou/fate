@@ -2,7 +2,7 @@
 
 This file tracks implementation work for Fate's first devnet release. It is a work list, not a release approval. The public mechanism lives in `README.md`; account layout lives in `ACCOUNT_MODEL.md`; user-triggered progression lives in `LIFECYCLE.md`.
 
-Status snapshot: 2026-08-27. The deterministic custody path exists. The app is still being built, and production randomness is not ready.
+Status snapshot: 2026-09-06. The deterministic custody path exists. The app is still being built, and production randomness is not ready.
 
 ## Source order
 
@@ -136,7 +136,8 @@ The current page is a working prototype. The first extraction into a navbar, mai
 - [x] Add a `useLifecycleProgress` hook that detects due activation or settlement after account notifications, page focus, tab visibility, refreshes, and user actions.
 - [x] Surface a due permissionless transition before the next user action, as specified in `LIFECYCLE.md`.
 - [x] Never silently sign or submit a lifecycle transaction because of passive activity; show the action, fee payer, account effects, and transaction state before wallet approval.
-- [x] Make the lifecycle flow handle two callers racing, stale state, provider failure, and the choice between separate or combined transactions.
+- [x] Handle a competing lifecycle caller by refreshing confirmed state and treating an already-advanced transition as success.
+- [ ] Complete lifecycle recovery for provider failure, stale blockhash retry, unknown signatures after timeout, and the separate-versus-combined transaction decision.
 
 ### 5. Break `FateMain` into focused Fate components
 
@@ -150,12 +151,11 @@ The current page is a working prototype. The first extraction into a navbar, mai
 
 ### 6. Finish the transaction UX before shared devnet testing
 
-- [ ] Keep simulation before signing and confirmation on the same primary RPC endpoint.
-- [ ] Add clear states for simulation, wallet approval, submission, confirmation, rejection, on-chain failure, blockhash expiry, timeout, and wrong network.
-- [ ] Reconcile a timed-out signature before allowing the user to retry, so an unknown transaction cannot be submitted twice accidentally.
-- [ ] Show estimated network fee, fee payer, transfers, claim or liability changes, and the exact post-action state in the review.
-- [ ] Show phase, threshold, countdown, side choice, personal odds, exact payout, fee base, pending status, maximum loss, erosion, claim state, and ten recent results before signature.
-- [ ] Keep the page mobile-first, dark, calm, and minimal. Avoid casino imagery, marketing sections, decorative gradients, notifications, analytics, and a card-grid dashboard.
+- [x] Keep simulation before signing and confirmation on the same primary RPC endpoint.
+- [x] Add clear states for simulation, wallet approval, submission, confirmation, rejection, on-chain failure, blockhash expiry, timeout, and wrong network.
+- [x] Reconcile a timed-out signature before allowing the user to retry, so an unknown transaction cannot be submitted twice accidentally.
+- [x] Show estimated network fee, fee payer, transfers, claim or liability changes, and the exact post-action state in the review.
+- [x] Show phase, threshold, countdown, side choice, personal odds, exact payout, fee base, pending status, maximum loss, erosion, claim state, and ten recent results before signature.
 
 ### 7. Make the UI resilient and accessible
 

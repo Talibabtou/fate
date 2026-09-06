@@ -3,7 +3,7 @@
 import type { ConnectedStandardSolanaWallet } from "@privy-io/react-auth/solana";
 import type { ReviewAction, SecondaryActionKind } from "../features/draw/types";
 import type { WalletStatus } from "../hooks/use-wallet-session";
-import type { FateTransactionState } from "../lib/transactions";
+import type { FateTransactionPreview, FateTransactionState } from "../lib/transactions";
 import { DrawHeader } from "./draw-header";
 import { DrawProgress } from "./draw-progress";
 import { DrawTerms } from "./draw-terms";
@@ -30,12 +30,16 @@ export function FateMain({
   onRefresh,
   onSecondaryAction,
   onWithdrawalSharesChange,
+  preview,
+  unknownSignature,
 }: {
   view: FateViewModel;
   amount: string;
   review: ReviewAction | null;
   transactionBusy: boolean;
   txState: FateTransactionState | null;
+  preview: FateTransactionPreview | null;
+  unknownSignature: string | null;
   wallet: ConnectedStandardSolanaWallet | null;
   walletStatus: WalletStatus;
   onAmountChange: (value: string) => void;
@@ -114,6 +118,9 @@ export function FateMain({
             review={review}
             transactionBusy={transactionBusy}
             txState={txState}
+            unknownSignature={unknownSignature}
+            preview={preview}
+            view={view}
             wallet={wallet}
           />
         ) : null}

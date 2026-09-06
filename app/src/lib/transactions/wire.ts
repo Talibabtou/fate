@@ -1,4 +1,4 @@
-import type { Base64EncodedWireTransaction } from "@solana/kit";
+import type { Base64EncodedWireTransaction, TransactionMessageBytesBase64 } from "@solana/kit";
 
 export function toBase64WireTransaction(bytes: Uint8Array) {
   let binary = "";
@@ -7,4 +7,8 @@ export function toBase64WireTransaction(bytes: Uint8Array) {
     binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
   }
   return btoa(binary) as Base64EncodedWireTransaction;
+}
+
+export function toBase64TransactionMessage(bytes: Uint8Array) {
+  return toBase64WireTransaction(bytes) as unknown as TransactionMessageBytesBase64;
 }

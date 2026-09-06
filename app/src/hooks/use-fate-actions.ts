@@ -20,7 +20,13 @@ import { readDevSettlementParticipants } from "../features/draw/settlement-parti
 import type { FateSnapshot } from "../features/draw/snapshot.ts";
 import type { LifecycleCheck, ReviewAction, SecondaryActionKind } from "../features/draw/types.ts";
 import { isRetryableRpcError } from "../lib/rpc/client.ts";
-import { executeFateTransaction, type FateTransactionState } from "../lib/transactions/index.ts";
+import {
+  executeFateTransaction,
+  FateTransactionError,
+  type FateTransactionPreview,
+  type FateTransactionState,
+  reconcileFateSignature,
+} from "../lib/transactions/index.ts";
 import { getLifecycleAction } from "./use-lifecycle-progress.ts";
 import type { WalletStatus } from "./use-wallet-session.tsx";
 
@@ -52,6 +58,11 @@ export function useFateActions({
   const [review, setReview] = useState<ReviewAction | null>(null);
   const [txState, setTxState] = useState<FateTransactionState | null>(null);
   const [txMessage, setTxMessage] = useState<string | null>(null);
+  const [unknownSignature, setUnknownSignature] = useState<string | null>(null);
+  const [unknownSignatureLastValidBlockHeight, setUnknownSignatureLastValidBlockHeight] = useState<
+    bigint | null
+  >(null);
+  const [preview, setPreview] = useState<FateTransactionPreview | null>(null);
   const [preparing, setPreparing] = useState(false);
   const confirming = useRef(false);
   const interactionLock = useRef(false);
@@ -60,7 +71,18 @@ export function useFateActions({
     preparing ||
     txState === "simulating" ||
     txState === "awaiting-signature" ||
-    txState === "submitted";
+    txState === "submitted" ||
+    txState === "confirming" ||
+    txState === "reconciling";
+
+  function hasUnknownSignature() {
+    if (!unknownSignature) return false;
+    setTxState("timed-out");
+    setTxMessage(
+      `Transaction ${unknownSignature.slice(0, 8)}… still has an unresolved status. Check it before retrying.`,
+    );
+    return true;
+  }
 
   async function prepareUserAction() {
     if (interactionLock.current) return null;
@@ -89,8 +111,15 @@ export function useFateActions({
   }
 
   async function beginPrimaryAction() {
+    if (hasUnknownSignature()) return;
     setTxMessage(null);
     setTxState(null);
+    setPreview(null);
+    if (walletStatus === "wrong-network") {
+      setTxState("wrong-network");
+      setTxMessage("Switch the connected wallet to the configured Solana network first.");
+      return;
+    }
     if (!wallet || walletStatus !== "connected") {
       setTxMessage("Connect a Solana wallet on the configured network first.");
       return;
@@ -148,8 +177,15 @@ export function useFateActions({
   }
 
   async function beginSecondaryAction(kind: SecondaryActionKind, historicalDrawId?: bigint) {
+    if (hasUnknownSignature()) return;
     setTxMessage(null);
     setTxState(null);
+    setPreview(null);
+    if (walletStatus === "wrong-network") {
+      setTxState("wrong-network");
+      setTxMessage("Switch the connected wallet to the configured Solana network first.");
+      return;
+    }
     if (!snapshot || !wallet || walletStatus !== "connected") {
       setTxMessage("Connect a Solana wallet and wait for live Fate state.");
       return;
@@ -214,8 +250,15 @@ export function useFateActions({
   }
 
   async function beginProgressAction() {
+    if (hasUnknownSignature()) return;
     setTxMessage(null);
     setTxState(null);
+    setPreview(null);
+    if (walletStatus === "wrong-network") {
+      setTxState("wrong-network");
+      setTxMessage("Switch the connected wallet to the configured Solana network first.");
+      return;
+    }
     if (!wallet || walletStatus !== "connected") {
       setTxMessage("Connect a Solana wallet and wait for live Fate state.");
       return;
@@ -238,7 +281,17 @@ export function useFateActions({
 
   async function confirmReview() {
     if (confirming.current || !review || !wallet || !snapshot) return;
+    if (walletStatus === "wrong-network") {
+      setTxState("wrong-network");
+      setTxMessage("Switch the connected wallet to the configured Solana network first.");
+      return;
+    }
     confirming.current = true;
+    if (unknownSignature) {
+      await reconcileUnknownSignature();
+      confirming.current = false;
+      return;
+    }
     setTxState("simulating");
     try {
       const latestSnapshot = await refresh();
@@ -304,9 +357,17 @@ export function useFateActions({
       } else {
         instruction = await claimStakeWithdrawalInstruction(programAddress, walletAddress);
       }
-      const result = await executeFateTransaction({ instruction, wallet, onState: setTxState });
+      const result = await executeFateTransaction({
+        instruction,
+        onPreview: setPreview,
+        onState: setTxState,
+        wallet,
+      });
       const refreshed = await refresh();
       setReview(null);
+      setPreview(null);
+      setUnknownSignature(null);
+      setUnknownSignatureLastValidBlockHeight(null);
       if (review.kind === "withdraw") onWithdrawalSharesChange("");
       setTxMessage(
         refreshed
@@ -314,6 +375,16 @@ export function useFateActions({
           : `Confirmed ${result.signature.slice(0, 8)}… Live state refresh is pending.`,
       );
     } catch (nextError) {
+      if (
+        nextError instanceof FateTransactionError &&
+        nextError.signature &&
+        (nextError.kind === "timed-out" || nextError.kind === "blockhash-expired")
+      ) {
+        setUnknownSignature(nextError.signature);
+        setUnknownSignatureLastValidBlockHeight(nextError.lastValidBlockHeight);
+        await reconcileUnknownSignature(nextError.signature, nextError.lastValidBlockHeight);
+        return;
+      }
       const racedSnapshot = await refresh().catch(() => null);
       if (racedSnapshot && isLifecycleAlreadyAdvanced(review, racedSnapshot)) {
         setReview(null);
@@ -324,11 +395,13 @@ export function useFateActions({
       const message = nextError instanceof Error ? nextError.message : "Transaction failed";
       if (nextError instanceof StaleActionError) setReview(null);
       setTxState(
-        nextError instanceof StaleActionError ||
-          message.includes("timed out") ||
-          isRetryableRpcError(nextError)
-          ? "stale"
-          : "failed",
+        nextError instanceof FateTransactionError
+          ? nextError.kind
+          : nextError instanceof StaleActionError ||
+              message.includes("timed out") ||
+              isRetryableRpcError(nextError)
+            ? "stale"
+            : "failed",
       );
       setTxMessage(message);
     } finally {
@@ -337,13 +410,66 @@ export function useFateActions({
   }
 
   function cancelReview() {
-    setReview(null);
-    setTxMessage(null);
-    setTxState(null);
+    if (!unknownSignature) setReview(null);
+    if (!unknownSignature) {
+      setTxMessage(null);
+      setTxState(null);
+      setPreview(null);
+    }
+  }
+
+  async function reconcileUnknownSignature(
+    signatureValue = unknownSignature,
+    lastValidBlockHeight = unknownSignatureLastValidBlockHeight,
+  ) {
+    if (!signatureValue) return;
+    setTxState("reconciling");
+    try {
+      const status = await reconcileFateSignature(signatureValue, lastValidBlockHeight);
+      if (status === "confirmed") {
+        const refreshed = await refresh();
+        setUnknownSignature(null);
+        setUnknownSignatureLastValidBlockHeight(null);
+        setReview(null);
+        setTxState("confirmed");
+        setTxMessage(
+          refreshed
+            ? `Confirmed ${signatureValue.slice(0, 8)}…`
+            : `Confirmed ${signatureValue.slice(0, 8)}… Live state refresh is pending.`,
+        );
+        return;
+      }
+      if (status === "expired") {
+        setUnknownSignature(null);
+        setUnknownSignatureLastValidBlockHeight(null);
+        setTxState("blockhash-expired");
+        setTxMessage("The transaction was not found and its blockhash expired; retry is safe.");
+        return;
+      }
+      setTxState("timed-out");
+      setTxMessage(
+        `Signature ${signatureValue.slice(0, 8)}… is not confirmed yet. It must be checked again before retrying.`,
+      );
+    } catch (error) {
+      if (error instanceof FateTransactionError && error.kind === "failed") {
+        setUnknownSignature(null);
+        setUnknownSignatureLastValidBlockHeight(null);
+        setTxState("failed");
+        setTxMessage(error.message);
+        return;
+      }
+      setTxState("timed-out");
+      setTxMessage(
+        `Could not reconcile signature ${signatureValue.slice(0, 8)}…; do not retry until its status is known. ${
+          error instanceof Error ? error.message : "RPC status check failed"
+        }`,
+      );
+    }
   }
 
   function openReview(nextReview: ReviewAction, currentSnapshot: FateSnapshot | null) {
     if (!currentSnapshot) return;
+    setPreview(null);
     setReview(nextReview);
   }
 
@@ -357,6 +483,8 @@ export function useFateActions({
     transactionBusy,
     txMessage,
     txState,
+    preview,
+    unknownSignature,
   };
 }
 
@@ -418,5 +546,7 @@ function validateReview(review: ReviewAction, snapshot: FateSnapshot, network: s
 }
 
 function formatSol(lamports: bigint) {
-  return (Number(lamports) / 1_000_000_000).toFixed(2);
+  const whole = lamports / 1_000_000_000n;
+  const cents = ((lamports % 1_000_000_000n) * 100n) / 1_000_000_000n;
+  return `${whole}.${cents.toString().padStart(2, "0")}`;
 }

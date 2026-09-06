@@ -65,7 +65,12 @@ export function FateToastStack({
         id: `transaction:${transactionState ?? "notice"}:${transactionMessage}`,
         message: transactionMessage,
         tone:
-          transactionState === "failed" || transactionState === "stale"
+          transactionState === "failed" ||
+          transactionState === "stale" ||
+          transactionState === "rejected" ||
+          transactionState === "blockhash-expired" ||
+          transactionState === "timed-out" ||
+          transactionState === "wrong-network"
             ? "error"
             : transactionState === "confirmed"
               ? "success"

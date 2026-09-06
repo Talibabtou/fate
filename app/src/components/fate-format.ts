@@ -9,6 +9,12 @@ export function formatSol(lamports: bigint) {
   return `${whole}.${cents.toString().padStart(2, "0")}`;
 }
 
+export function formatSolPrecise(lamports: bigint) {
+  const whole = lamports / SOL;
+  const fraction = (lamports % SOL).toString().padStart(9, "0").replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : `${whole}`;
+}
+
 export function countdownLabel(
   phase: DrawPhase | undefined,
   locksAt: bigint | undefined,
@@ -25,9 +31,15 @@ export function transactionStateLabel(state: FateTransactionState | null) {
   if (state === "simulating") return "Simulating…";
   if (state === "awaiting-signature") return "Approve in wallet…";
   if (state === "submitted") return "Confirming…";
+  if (state === "confirming") return "Confirming…";
   if (state === "confirmed") return "Confirmed";
+  if (state === "rejected") return "Wallet rejected";
   if (state === "failed") return "Failed";
+  if (state === "blockhash-expired") return "Blockhash expired";
+  if (state === "timed-out") return "Confirmation timed out";
+  if (state === "reconciling") return "Checking signature…";
   if (state === "stale") return "Refresh required";
+  if (state === "wrong-network") return "Wrong network";
   return "Working…";
 }
 

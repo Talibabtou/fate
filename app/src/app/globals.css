@@ -230,11 +230,35 @@ input:focus-visible {
   color: var(--ink);
   font-size: 0.7rem;
   text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .transaction-review .terms-note {
   margin: 0.7rem 0;
   line-height: 1.45;
+}
+
+.review-disclosures {
+  border-top: 1px solid var(--line);
+  margin-top: 0.2rem;
+}
+
+.review-history {
+  border-top: 1px solid var(--line);
+  padding: 0.65rem 0 0.2rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.review-history ol {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0.55rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.review-history p {
+  margin: 0.55rem 0 0;
 }
 
 .review-actions {

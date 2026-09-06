@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DrawPhase } from "../domain/fate/index.ts";
-import type { FateSnapshot } from "../features/fate/data/snapshot.ts";
-import { isLifecycleAlreadyAdvanced, parseShares, parseSolAmount } from "./fate-action-rules.ts";
+import type { FateSnapshot } from "../features/draw/snapshot.ts";
+import { isLifecycleAlreadyAdvanced, parseShares, parseSolAmount } from "../features/draw/action-rules.ts";
 
 function snapshot(id: bigint, phase: DrawPhase) {
   return { draw: { id, phase } } as FateSnapshot;

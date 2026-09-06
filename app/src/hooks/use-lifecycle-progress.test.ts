@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { address } from "@solana/kit";
-import { DrawPhase } from "../domain/fate/index.ts";
+import { DrawPhase, WinnerSide } from "../domain/fate/index.ts";
 import { getLifecycleAction } from "./use-lifecycle-progress.ts";
 
 const config = {
@@ -13,9 +13,11 @@ const config = {
 };
 
 const draw = {
+  winner: address("11111111111111111111111111111111"),
   rentPayer: address("11111111111111111111111111111111"),
   id: 7n,
   phase: DrawPhase.Activated,
+  winnerSide: WinnerSide.None,
   firstPlayerAt: 1_000n,
   locksAt: 2_000n,
   stakerTvlSnapshot: 100_000_000_000n,

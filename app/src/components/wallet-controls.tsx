@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { WalletSession } from "./use-wallet-session";
+import type { WalletSession } from "../hooks/use-wallet-session";
 
-export type { WalletStatus } from "./use-wallet-session";
+export type { WalletStatus } from "../hooks/use-wallet-session";
 
 export function WalletControls({ session }: { session: WalletSession }) {
   const [menuOpen, setMenuOpen] = useState(false);

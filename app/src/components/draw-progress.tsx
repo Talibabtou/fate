@@ -1,4 +1,4 @@
-import type { DrawAccount } from "../../domain/fate";
+import type { DrawAccount } from "../domain/fate";
 import { countdownLabel, formatSol } from "./fate-format";
 
 export function DrawProgress({

@@ -1,5 +1,5 @@
 import type { Address } from "@solana/kit";
-import { NonRetryableRpcReadError, type SolanaRpc } from "../../../lib/rpc/client.ts";
+import { NonRetryableRpcReadError, type SolanaRpc } from "../../lib/rpc/client.ts";
 
 export type AccountExpectation = {
   account: Address;

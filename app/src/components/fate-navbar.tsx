@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { WalletSession } from "./use-wallet-session";
+import type { WalletSession } from "../hooks/use-wallet-session";
 import { StaticWalletControls, WalletControls } from "./wallet-controls";
 
 export function FateNavbar({

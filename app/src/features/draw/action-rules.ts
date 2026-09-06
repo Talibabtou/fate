@@ -1,6 +1,6 @@
-import { DrawPhase } from "../domain/fate/index.ts";
-import type { FateSnapshot } from "../features/fate/data/snapshot.ts";
-import type { LifecycleAction } from "./use-lifecycle-progress.ts";
+import { DrawPhase } from "../../domain/fate/index.ts";
+import type { FateSnapshot } from "./snapshot.ts";
+import type { LifecycleAction } from "./types.ts";
 
 const SOL = 1_000_000_000n;
 

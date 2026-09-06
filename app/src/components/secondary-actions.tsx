@@ -1,6 +1,6 @@
-import type { DrawAccount, PlayerPositionAccount, StakerPositionAccount } from "../../domain/fate";
-import { DrawPhase } from "../../domain/fate";
-import type { SecondaryActionKind } from "../use-fate-actions";
+import type { DrawAccount, PlayerPositionAccount, StakerPositionAccount } from "../domain/fate";
+import { DrawPhase } from "../domain/fate";
+import type { SecondaryActionKind } from "../features/draw/types";
 import { formatSol } from "./fate-format";
 
 export function SecondaryActions({
@@ -19,7 +19,7 @@ export function SecondaryActions({
   stakerPosition: StakerPositionAccount | null;
   transactionBusy: boolean;
   withdrawalShares: string;
-  onSecondaryAction: (kind: SecondaryActionKind) => void;
+  onSecondaryAction: (kind: SecondaryActionKind, historicalDrawId?: bigint) => void;
   onWithdrawalSharesChange: (value: string) => void;
 }) {
   return (

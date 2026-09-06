@@ -1,13 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { type ConfigAccount, type DrawAccount, dueAction } from "../domain/fate/index.ts";
-import type { FateSnapshot } from "../features/fate/data/snapshot.ts";
+import type { FateSnapshot } from "../features/draw/snapshot.ts";
+import type { LifecycleAction, LifecycleCheck } from "../features/draw/types.ts";
 
-export type LifecycleAction = "activate" | "settle";
-
-export type LifecycleCheck = {
-  snapshot: FateSnapshot | null;
-  dueAction: LifecycleAction | null;
-};
+export type { LifecycleAction, LifecycleCheck } from "../features/draw/types.ts";
 
 export function useLifecycleProgress({
   config,

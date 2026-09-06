@@ -11,27 +11,14 @@ import {
   refundPlayerInstruction,
   requestStakeWithdrawalInstruction,
 } from "../domain/fate/index.ts";
-import { readDevSettlementParticipants } from "../features/fate/data/settlement-participants.ts";
-import type { FateSnapshot } from "../features/fate/data/snapshot.ts";
+import { readDevSettlementParticipants } from "../features/draw/settlement-participants.ts";
+import type { FateSnapshot } from "../features/draw/snapshot.ts";
 import { isRetryableRpcError } from "../lib/rpc/client.ts";
 import { executeFateTransaction, type FateTransactionState } from "../lib/transactions/index.ts";
-import { isLifecycleAlreadyAdvanced, parseShares, parseSolAmount } from "./fate-action-rules.ts";
-import {
-  getLifecycleAction,
-  type LifecycleAction,
-  type LifecycleCheck,
-} from "./use-lifecycle-progress.ts";
+import { isLifecycleAlreadyAdvanced, parseShares, parseSolAmount } from "../features/draw/action-rules.ts";
+import { getLifecycleAction } from "./use-lifecycle-progress.ts";
+import type { LifecycleAction, LifecycleCheck, ReviewAction, SecondaryActionKind } from "../features/draw/types.ts";
 import type { WalletStatus } from "./use-wallet-session.tsx";
-
-export type ReviewAction =
-  | { kind: "deposit"; side: "player" | "staker"; amountLamports: bigint; amountLabel: string }
-  | { kind: "refund"; amountLamports: bigint; amountLabel: string }
-  | { kind: "withdraw"; shares: bigint; amountLabel: string }
-  | { kind: "claim"; amountLamports: bigint; amountLabel: string }
-  | { kind: "claim-withdrawal"; amountLamports: bigint; amountLabel: string }
-  | { kind: "progress"; action: LifecycleAction; drawId: bigint; amountLabel: string };
-
-export type SecondaryActionKind = Exclude<ReviewAction["kind"], "deposit" | "progress">;
 
 export function useFateActions({
   amount,
@@ -156,7 +143,7 @@ export function useFateActions({
     );
   }
 
-  async function beginSecondaryAction(kind: SecondaryActionKind) {
+  async function beginSecondaryAction(kind: SecondaryActionKind, historicalDrawId?: bigint) {
     setTxMessage(null);
     setTxState(null);
     if (!snapshot || !wallet || walletStatus !== "connected") {
@@ -178,12 +165,23 @@ export function useFateActions({
         },
         currentSnapshot,
       );
-    } else if (kind === "claim" && currentSnapshot.playerPosition?.claimableLamports) {
+    } else if (kind === "claim") {
+      const historicalDraw =
+        historicalDrawId !== undefined
+          ? currentSnapshot.recentDraws.find(({ draw }) => draw.id === historicalDrawId)
+          : null;
+      const claimPosition =
+        historicalDrawId !== undefined
+          ? historicalDraw?.playerPosition
+          : currentSnapshot.playerPosition;
+      const claimDrawId = historicalDraw?.draw.id ?? historicalDrawId ?? currentSnapshot.draw.id;
+      if (!claimPosition?.claimableLamports) return;
       openReview(
         {
           kind,
-          amountLamports: currentSnapshot.playerPosition.claimableLamports,
-          amountLabel: `${formatSol(currentSnapshot.playerPosition.claimableLamports)} SOL`,
+          drawId: claimDrawId,
+          amountLamports: claimPosition.claimableLamports,
+          amountLabel: `${formatSol(claimPosition.claimableLamports)} SOL`,
         },
         currentSnapshot,
       );
@@ -298,11 +296,7 @@ export function useFateActions({
           review.shares,
         );
       } else if (review.kind === "claim") {
-        instruction = await claimPlayerInstruction(
-          programAddress,
-          walletAddress,
-          latestSnapshot.draw.id,
-        );
+        instruction = await claimPlayerInstruction(programAddress, walletAddress, review.drawId);
       } else {
         instruction = await claimStakeWithdrawalInstruction(programAddress, walletAddress);
       }
@@ -398,8 +392,14 @@ function validateReview(review: ReviewAction, snapshot: FateSnapshot, network: s
     }
   } else if (review.kind === "refund" && !snapshot.playerPosition?.refundableLamports) {
     throw new StaleActionError("The Player position is no longer refundable.");
-  } else if (review.kind === "claim" && !snapshot.playerPosition?.claimableLamports) {
-    throw new StaleActionError("The Player claim is no longer available.");
+  } else if (review.kind === "claim") {
+    const claimPosition =
+      review.drawId === snapshot.draw.id
+        ? snapshot.playerPosition
+        : snapshot.recentDraws.find(({ draw }) => draw.id === review.drawId)?.playerPosition;
+    if (!claimPosition?.claimableLamports) {
+      throw new StaleActionError("The Player claim is no longer available.");
+    }
   } else if (
     review.kind === "withdraw" &&
     (!snapshot.stakerPosition || snapshot.stakerPosition.activeShares < review.shares)

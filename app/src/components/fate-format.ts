@@ -1,5 +1,5 @@
-import { DrawPhase } from "../../domain/fate";
-import type { FateTransactionState } from "../../lib/transactions";
+import { DrawPhase } from "../domain/fate";
+import type { FateTransactionState } from "../lib/transactions";
 
 const SOL = 1_000_000_000n;
 

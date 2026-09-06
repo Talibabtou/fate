@@ -1,4 +1,4 @@
-import type { DrawAccount } from "../../domain/fate";
+import type { DrawAccount } from "../domain/fate";
 import { formatSol } from "./fate-format";
 
 export function DrawTerms({ draw }: { draw: DrawAccount | undefined }) {

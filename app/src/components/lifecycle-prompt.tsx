@@ -1,4 +1,4 @@
-import type { LifecycleAction } from "../use-lifecycle-progress";
+import type { LifecycleAction } from "../features/draw/types";
 
 export function LifecyclePrompt({
   action,

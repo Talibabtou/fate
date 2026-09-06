@@ -2,17 +2,17 @@
 
 import type { ConnectedStandardSolanaWallet } from "@privy-io/react-auth/solana";
 import type { FateTransactionState } from "../lib/transactions";
-import { DrawHeader } from "./fate/draw-header";
-import { DrawProgress } from "./fate/draw-progress";
-import { DrawTerms } from "./fate/draw-terms";
-import type { FateViewModel } from "./fate/fate-view-model";
-import { PositionActionForm } from "./fate/position-action-form";
-import { RecentDraws } from "./fate/recent-draws";
-import { TransactionReview } from "./fate/transaction-review";
-import type { ReviewAction, SecondaryActionKind } from "./use-fate-actions";
-import type { WalletStatus } from "./use-wallet-session";
+import { DrawHeader } from "./draw-header";
+import { DrawProgress } from "./draw-progress";
+import { DrawTerms } from "./draw-terms";
+import type { FateViewModel } from "./fate-view-model";
+import { PositionActionForm } from "./position-action-form";
+import { RecentDraws } from "./recent-draws";
+import { TransactionReview } from "./transaction-review";
+import type { ReviewAction, SecondaryActionKind } from "../features/draw/types";
+import type { WalletStatus } from "../hooks/use-wallet-session";
 
-export type { ReviewAction } from "./use-fate-actions";
+export type { ReviewAction } from "../features/draw/types";
 export function FateMain({
   amount,
   view,
@@ -45,12 +45,11 @@ export function FateMain({
   onPrimaryAction: () => void;
   onProgressAction: () => void;
   onRefresh: () => void;
-  onSecondaryAction: (kind: SecondaryActionKind) => void;
+  onSecondaryAction: (kind: SecondaryActionKind, historicalDrawId?: bigint) => void;
   onWithdrawalSharesChange: (value: string) => void;
 }) {
   const {
     activationThresholdLamports,
-    config,
     draw,
     isPlayer,
     mode,
@@ -61,6 +60,7 @@ export function FateMain({
     programAddress,
     progress,
     progressAction,
+    recentDraws,
     refreshing,
     stakerPosition,
     stakerTvlLamports,
@@ -121,7 +121,10 @@ export function FateMain({
 
       <div className="details-stack">
         <DrawTerms draw={draw} />
-        <RecentDraws config={config} />
+        <RecentDraws
+          onClaim={(drawId) => onSecondaryAction("claim", drawId)}
+          recentDraws={recentDraws}
+        />
       </div>
     </section>
   );

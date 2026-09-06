@@ -5,15 +5,15 @@ import { useEffect, useState } from "react";
 import { activationThreshold, type DrawAccount, DrawPhase } from "../domain/fate";
 import { fatePublicConfig } from "../lib/public-config";
 import { fateProgramAddress } from "../lib/rpc/config";
-import type { FateViewModel } from "./fate/fate-view-model";
-import { FateFooter } from "./fate-footer";
-import { FateMain } from "./fate-main";
-import { FateNavbar } from "./fate-navbar";
-import { FateToastStack } from "./fate-toast-stack";
-import { useFateActions } from "./use-fate-actions";
-import { useFateSnapshot } from "./use-fate-snapshot";
-import { useLifecycleProgress } from "./use-lifecycle-progress";
-import { useWalletSession, WalletSessionProvider } from "./use-wallet-session";
+import type { FateViewModel } from "../components/fate-view-model";
+import { FateFooter } from "../components/fate-footer";
+import { FateMain } from "../components/fate-main";
+import { FateNavbar } from "../components/fate-navbar";
+import { FateToastStack } from "../components/fate-toast-stack";
+import { useFateActions } from "../hooks/use-fate-actions";
+import { useFateSnapshot } from "../hooks/use-fate-snapshot";
+import { useLifecycleProgress } from "../hooks/use-lifecycle-progress";
+import { useWalletSession, WalletSessionProvider } from "../hooks/use-wallet-session";
 
 const phaseLabels: Record<number, string> = {
   [DrawPhase.Funding]: "Funding",
@@ -101,6 +101,7 @@ function FatePageContent({ hasPrivy }: { hasPrivy: boolean }) {
     programAddress,
     progress,
     progressAction: lifecycle.dueAction,
+    recentDraws: snapshot?.recentDraws ?? [],
     refreshing,
     stakerPosition: snapshot?.stakerPosition ?? null,
     stakerTvlLamports,
@@ -120,7 +121,9 @@ function FatePageContent({ hasPrivy }: { hasPrivy: boolean }) {
         onPrimaryAction={() => void actions.beginPrimaryAction()}
         onProgressAction={() => void actions.beginProgressAction()}
         onRefresh={() => void refresh()}
-        onSecondaryAction={(kind) => void actions.beginSecondaryAction(kind)}
+        onSecondaryAction={(kind, historicalDrawId) =>
+          void actions.beginSecondaryAction(kind, historicalDrawId)
+        }
         review={actions.review}
         transactionBusy={actions.transactionBusy}
         txState={actions.txState}

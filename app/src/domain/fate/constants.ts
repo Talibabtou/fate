@@ -46,6 +46,14 @@ export const DrawPhase = {
 
 export type DrawPhase = (typeof DrawPhase)[keyof typeof DrawPhase];
 
+export const WinnerSide = {
+  None: 0,
+  Player: 1,
+  Staker: 2,
+} as const;
+
+export type WinnerSide = (typeof WinnerSide)[keyof typeof WinnerSide];
+
 export type ConfigAccount = {
   feeTreasury: Address;
   version: bigint;
@@ -55,9 +63,11 @@ export type ConfigAccount = {
 };
 
 export type DrawAccount = {
+  winner: Address;
   rentPayer: Address;
   id: bigint;
   phase: DrawPhase;
+  winnerSide: WinnerSide;
   firstPlayerAt: bigint;
   locksAt: bigint;
   stakerTvlSnapshot: bigint;

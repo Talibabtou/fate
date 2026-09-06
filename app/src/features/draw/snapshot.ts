@@ -23,10 +23,10 @@ import {
   type StakerPositionAccount,
   type StakerVaultAccount,
   stakerPositionAddress,
-} from "../../../domain/fate/index.ts";
-import { publicConfigIssues } from "../../../lib/public-config.ts";
-import { NonRetryableRpcReadError, readWithRpcFallback } from "../../../lib/rpc/client.ts";
-import { fateProgramAddress, rpcReadUrls } from "../../../lib/rpc/config.ts";
+} from "../../domain/fate/index.ts";
+import { publicConfigIssues } from "../../lib/public-config.ts";
+import { NonRetryableRpcReadError, readWithRpcFallback } from "../../lib/rpc/client.ts";
+import { fateProgramAddress, rpcReadUrls } from "../../lib/rpc/config.ts";
 import { readAccountsAtConfirmedSlot } from "./account-reader.ts";
 
 export type FateSnapshot = {
@@ -36,6 +36,7 @@ export type FateSnapshot = {
   vault: StakerVaultAccount;
   stakerPosition: StakerPositionAccount | null;
   playerPosition: PlayerPositionAccount | null;
+  recentDraws: RecentDrawSnapshot[];
   addresses: {
     config: Address;
     draw: Address;
@@ -43,6 +44,11 @@ export type FateSnapshot = {
     stakerPosition: Address | null;
     playerPosition: Address | null;
   };
+};
+
+export type RecentDrawSnapshot = {
+  draw: DrawAccount;
+  playerPosition: PlayerPositionAccount | null;
 };
 
 export async function readFateSnapshot(walletAddress?: Address): Promise<FateSnapshot> {
@@ -80,6 +86,34 @@ export async function readFateSnapshot(walletAddress?: Address): Promise<FateSna
     const playerPositionAddressValue = walletAddress
       ? await playerPositionAddress(programAddress, initialConfig.currentDrawId, walletAddress)
       : null;
+    const recentDrawAddresses = await Promise.all(
+      initialConfig.recentDrawIds.map(async (drawId) => ({
+        drawId,
+        drawAddress: (await fateAddresses(programAddress, drawId)).draw,
+        playerPositionAddress: walletAddress
+          ? await playerPositionAddress(programAddress, drawId, walletAddress)
+          : null,
+      })),
+    );
+    const recentDrawExpectations = recentDrawAddresses.map(({ drawAddress }) => ({
+      account: drawAddress,
+      expectedSize: DRAW_SIZE,
+      expectedDiscriminator: DRAW_DISCRIMINATOR,
+    }));
+    const recentPlayerExpectations = recentDrawAddresses
+      .map(({ playerPositionAddress: historicalPlayerPositionAddress }) =>
+        historicalPlayerPositionAddress
+          ? {
+              account: historicalPlayerPositionAddress,
+              expectedSize: PLAYER_POSITION_SIZE,
+              expectedDiscriminator: PLAYER_POSITION_DISCRIMINATOR,
+              optional: true,
+            }
+          : null,
+      )
+      .filter(
+        (expectation): expectation is NonNullable<typeof expectation> => expectation !== null,
+      );
     const finalRead = await readAccountsAtConfirmedSlot(
       rpc,
       [
@@ -118,21 +152,53 @@ export async function readFateSnapshot(walletAddress?: Address): Promise<FateSna
               },
             ]
           : []),
+        ...recentDrawExpectations,
+        ...recentPlayerExpectations,
       ],
       programAddress,
       initialConfigRead.slot,
     );
-    const [configData, drawData, vaultData, stakerPositionData, playerPositionData] =
-      finalRead.data;
+    const configData = finalRead.data[0];
+    const drawData = finalRead.data[1];
+    const vaultData = finalRead.data[2];
+    const stakerPositionData = stakerPositionAddressValue ? finalRead.data[3] : null;
+    const playerPositionData = playerPositionAddressValue ? finalRead.data[4] : null;
     if (!configData || !drawData || !vaultData) {
       throw new NonRetryableRpcReadError("Fate snapshot is missing a required account");
     }
     const config = decodeAccount("config", decodeConfig, configData);
-    if (config.currentDrawId !== initialConfig.currentDrawId) {
+    if (
+      config.currentDrawId !== initialConfig.currentDrawId ||
+      config.recentDrawIds.length !== initialConfig.recentDrawIds.length ||
+      config.recentDrawIds.some((drawId, index) => drawId !== initialConfig.recentDrawIds[index])
+    ) {
       throw new NonRetryableRpcReadError(
         "Fate snapshot changed while it was being read; retrying is required",
       );
     }
+    const recentDataStart =
+      3 + Number(stakerPositionAddressValue !== null) + Number(playerPositionAddressValue !== null);
+    const recentDrawData = finalRead.data.slice(
+      recentDataStart,
+      recentDataStart + recentDrawExpectations.length,
+    );
+    const recentPlayerData = finalRead.data.slice(
+      recentDataStart + recentDrawExpectations.length,
+      recentDataStart + recentDrawExpectations.length + recentPlayerExpectations.length,
+    );
+    const recentDraws = recentDrawAddresses.map((entry, index) => {
+      const historicalDrawData = recentDrawData[index];
+      if (!historicalDrawData) {
+        throw new NonRetryableRpcReadError(`Recent draw account is missing: ${entry.drawId}`);
+      }
+      const historicalPlayerData = walletAddress ? recentPlayerData[index] : null;
+      return {
+        draw: decodeAccount("recent draw", decodeDraw, historicalDrawData),
+        playerPosition: historicalPlayerData
+          ? decodeAccount("historical Player position", decodePlayerPosition, historicalPlayerData)
+          : null,
+      };
+    });
 
     return {
       slot: finalRead.slot,
@@ -145,6 +211,7 @@ export async function readFateSnapshot(walletAddress?: Address): Promise<FateSna
       playerPosition: playerPositionData
         ? decodeAccount("Player position", decodePlayerPosition, playerPositionData)
         : null,
+      recentDraws,
       addresses: {
         config: configAddress,
         draw: currentDrawAddress,

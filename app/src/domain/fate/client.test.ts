@@ -16,6 +16,7 @@ import {
   PLAYER_POSITION_DISCRIMINATOR,
   PLAYER_POSITION_SIZE,
   selectWeightedIndex,
+  WinnerSide,
 } from "./index.ts";
 
 function setU64(data: Uint8Array, offset: number, value: bigint) {
@@ -47,9 +48,11 @@ test("decodes validated Steel config and draw layouts", () => {
 
   const drawData = new Uint8Array(DRAW_SIZE);
   drawData[0] = DRAW_DISCRIMINATOR;
+  drawData.set(getAddressEncoder().encode(treasury), 8);
   drawData.set(getAddressEncoder().encode(treasury), 72);
   setU64(drawData, 136, 7n);
   setU64(drawData, 144, BigInt(DrawPhase.Activated));
+  setU64(drawData, 256, BigInt(WinnerSide.None));
   setI64(drawData, 160, 100n);
   setI64(drawData, 176, 500n);
   setU64(drawData, 192, 1_000_000_000n);
@@ -59,9 +62,11 @@ test("decodes validated Steel config and draw layouts", () => {
   setU64(drawData, 224, 100_000_000n);
   setU64(drawData, 280, 50_000_000n);
   assert.deepEqual(decodeDraw(drawData), {
+    winner: treasury,
     rentPayer: treasury,
     id: 7n,
     phase: DrawPhase.Activated,
+    winnerSide: WinnerSide.None,
     firstPlayerAt: 100n,
     locksAt: 500n,
     stakerTvlSnapshot: 1_000_000_000n,
@@ -116,9 +121,11 @@ test("progression chooses only due permissionless transitions", () => {
     recentDrawIds: [],
   };
   const draw = {
+    winner: address("11111111111111111111111111111111"),
     rentPayer: address("11111111111111111111111111111111"),
     id: 7n,
     phase: DrawPhase.Funding,
+    winnerSide: WinnerSide.None,
     firstPlayerAt: 1_000n,
     locksAt: 0n,
     stakerTvlSnapshot: 100_000_000_000n,

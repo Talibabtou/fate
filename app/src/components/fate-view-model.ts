@@ -4,8 +4,9 @@ import type {
   DrawAccount,
   PlayerPositionAccount,
   StakerPositionAccount,
-} from "../../domain/fate";
-import type { LifecycleAction } from "../use-lifecycle-progress";
+} from "../domain/fate";
+import type { RecentDrawSnapshot } from "../features/draw/snapshot";
+import type { LifecycleAction } from "../features/draw/types";
 
 export type FateViewModel = {
   activationThresholdLamports: bigint | null;
@@ -17,6 +18,7 @@ export type FateViewModel = {
   now: number;
   phase: string;
   playerPosition: PlayerPositionAccount | null;
+  recentDraws: RecentDrawSnapshot[];
   programAddress: Address | null;
   progress: number;
   progressAction: LifecycleAction | null;

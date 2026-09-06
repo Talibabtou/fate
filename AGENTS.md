@@ -83,6 +83,7 @@ See `docs/LIFECYCLE.md` for the user-triggered progression and caller-paid fallb
 - Derive phases and balances from confirmed on-chain state. Browser timers only display expected deadlines. Refetch affected accounts after confirmation and handle submitted, confirmed, failed, stale, dropped-subscription, wrong-network, and rejected-signature states.
 - The page must show the active phase, threshold and countdown, Staker/Player action, odds, exact payout estimate, fee base, pending/commitment status, maximum loss, erosion, claim state, ten recent results, and compact devnet disclosures before signature.
 - Keep the visual direction calm, dark, serious, and minimal. Use a text Fate wordmark and one accent. Mobile puts the primary action first and keeps advanced detail collapsed. Do not add casino imagery, decorative gradients, a marketing landing page, notifications, analytics, or a card-grid dashboard.
+- Follow `docs/UI_SYSTEM.md` for the frontend component ownership, semantic token, accessibility-state, native HTML, and selective shadcn/ui workflow.
 
 ## Testing and release
 

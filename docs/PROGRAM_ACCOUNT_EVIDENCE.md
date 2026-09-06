@@ -41,3 +41,24 @@ The account contract test now runs 128 seeded substituted-account mutations acro
 - Production SBF build and lifecycle tests: `NO_DNA=1 cargo build-sbf --no-default-features -- --package fate-program` and `NO_DNA=1 cargo test-sbf --no-default-features --package fate-program --test lifecycle` — passed.
 - App Biome, TypeScript, direct Node tests, and production Next build — passed; 10 app tests passed.
 - `cargo fmt --all -- --check`, `git diff --check`, and simulator `py_compile` — passed.
+
+## Devnet upgrade verification
+
+On 2026-08-30, the normal five-minute deterministic artifact was built with
+`NO_DNA=1 cargo build-sbf --features dev-randomness -- --package fate-program`
+and upgraded in place on devnet.
+
+- Program: `BRBMYpjn9hCw9h5T7efxm1qAeHFi8JaGuubioTBQ13zU`
+- Upgrade authority and fee payer: `2k3BVTXqooYoic2oVqoGLwTMozaKys3xueApBqLg8ZKD`
+- Artifact SHA-256: `2764db8dce310d5ea241ce5d8fb17ca0452682bfefcf126be7c09feb8461de50`
+- Artifact size: `237672` bytes
+- Upgrade slot: `490636875` (`2026-08-30T22:46:09Z`)
+- Upgrade signature: `3ma3Y5Q5ZGcf49Sjq4bjf8SZz2vMGMhxguUDLTFHr2LqSv7o6F2UXBSmUSJpT1GZVKQiK6bWxchQ5qM8YUCerPyj`
+- Live program-data capacity: `246416` bytes; the extra `8744` bytes are zero padding.
+- The live program's first `237672` bytes match the local artifact byte for byte.
+
+The existing initialization was preserved; no second `initialize` transaction
+was sent. The post-upgrade state read confirmed Config version `1`, current
+Draw `0` in `ACTIVATED`, `0.2 SOL` of Player TVL, one open Player position,
+eight open weight pages, and a Staker Vault with `1.0 SOL` of active assets,
+`1.0 SOL` of shares, and zero withdrawal liability.

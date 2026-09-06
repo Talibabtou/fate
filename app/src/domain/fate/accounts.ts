@@ -20,6 +20,7 @@ import {
   WEIGHT_PAGE_DISCRIMINATOR,
   WEIGHT_PAGE_SIZE,
   type WeightPageAccount,
+  WinnerSide,
 } from "./constants.ts";
 
 function assertAccountData(data: Uint8Array, size: number, discriminator: number) {
@@ -77,13 +78,23 @@ export function decodeConfig(data: Uint8Array): ConfigAccount {
 export function decodeDraw(data: Uint8Array): DrawAccount {
   assertAccountData(data, DRAW_SIZE, DRAW_DISCRIMINATOR);
   const phase = Number(u64(data, 144));
+  const winnerSide = Number(u64(data, 256));
   if (!Number.isSafeInteger(phase) || phase < DrawPhase.Funding || phase > DrawPhase.Voided) {
     throw new Error(`invalid draw phase: ${phase}`);
   }
+  if (
+    !Number.isSafeInteger(winnerSide) ||
+    winnerSide < WinnerSide.None ||
+    winnerSide > WinnerSide.Staker
+  ) {
+    throw new Error(`invalid winner side: ${winnerSide}`);
+  }
   return {
+    winner: getAddressDecoder().decode(data.slice(8, 40)),
     rentPayer: getAddressDecoder().decode(data.slice(72, 104)),
     id: u64(data, 136),
     phase: phase as DrawPhase,
+    winnerSide: winnerSide as WinnerSide,
     firstPlayerAt: i64(data, 160),
     locksAt: i64(data, 176),
     stakerTvlSnapshot: u64(data, 192),

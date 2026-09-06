@@ -18,14 +18,14 @@ import {
   WEIGHT_PAGE_SIZE,
   WEIGHT_TREE_DEPTH,
   weightPageAddress,
-} from "../../../domain/fate/index.ts";
-import { publicConfigIssues } from "../../../lib/public-config.ts";
+} from "../../domain/fate/index.ts";
+import { publicConfigIssues } from "../../lib/public-config.ts";
 import {
   NonRetryableRpcReadError,
   readWithRpcFallback,
   type SolanaRpc,
-} from "../../../lib/rpc/client.ts";
-import { fateProgramAddress, rpcReadUrls } from "../../../lib/rpc/config.ts";
+} from "../../lib/rpc/client.ts";
+import { fateProgramAddress, rpcReadUrls } from "../../lib/rpc/config.ts";
 import { decodeRpcData, readAccount } from "./account-reader.ts";
 
 export async function readDevSettlementParticipants(

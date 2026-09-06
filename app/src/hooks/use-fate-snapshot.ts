@@ -1,6 +1,6 @@
 import type { Address } from "@solana/kit";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type FateSnapshot, readFateSnapshot } from "../features/fate/data/snapshot";
+import { type FateSnapshot, readFateSnapshot } from "../features/draw/snapshot";
 import { RpcUnavailableError, subscribeToAccounts } from "../lib/rpc/client";
 
 const NORMAL_POLL_MS = 15_000;

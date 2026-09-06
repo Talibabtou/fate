@@ -1,5 +1,5 @@
-import type { LifecycleAction } from "../use-lifecycle-progress";
-import type { WalletStatus } from "../use-wallet-session";
+import type { LifecycleAction } from "../features/draw/types";
+import type { WalletStatus } from "../hooks/use-wallet-session";
 import { LifecyclePrompt } from "./lifecycle-prompt";
 
 export function DrawHeader({

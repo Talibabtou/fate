@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import type { DrawAccount, PlayerPositionAccount, StakerPositionAccount } from "../domain/fate";
-import type { FateTransactionState } from "../lib/transactions";
 import type { SecondaryActionKind } from "../features/draw/types";
 import type { WalletStatus } from "../hooks/use-wallet-session";
+import type { FateTransactionState } from "../lib/transactions";
 import { formatSol, transactionStateLabel } from "./fate-format";
 import { SecondaryActions } from "./secondary-actions";
 

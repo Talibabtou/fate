@@ -2,18 +2,18 @@
 
 import { address } from "@solana/kit";
 import { useEffect, useState } from "react";
-import { activationThreshold, type DrawAccount, DrawPhase } from "../domain/fate";
-import { fatePublicConfig } from "../lib/public-config";
-import { fateProgramAddress } from "../lib/rpc/config";
-import type { FateViewModel } from "../components/fate-view-model";
 import { FateFooter } from "../components/fate-footer";
 import { FateMain } from "../components/fate-main";
 import { FateNavbar } from "../components/fate-navbar";
 import { FateToastStack } from "../components/fate-toast-stack";
+import type { FateViewModel } from "../components/fate-view-model";
+import { activationThreshold, type DrawAccount, DrawPhase } from "../domain/fate";
 import { useFateActions } from "../hooks/use-fate-actions";
 import { useFateSnapshot } from "../hooks/use-fate-snapshot";
 import { useLifecycleProgress } from "../hooks/use-lifecycle-progress";
 import { useWalletSession, WalletSessionProvider } from "../hooks/use-wallet-session";
+import { fatePublicConfig } from "../lib/public-config";
+import { fateProgramAddress } from "../lib/rpc/config";
 
 const phaseLabels: Record<number, string> = {
   [DrawPhase.Funding]: "Funding",

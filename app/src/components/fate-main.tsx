@@ -1,6 +1,8 @@
 "use client";
 
 import type { ConnectedStandardSolanaWallet } from "@privy-io/react-auth/solana";
+import type { ReviewAction, SecondaryActionKind } from "../features/draw/types";
+import type { WalletStatus } from "../hooks/use-wallet-session";
 import type { FateTransactionState } from "../lib/transactions";
 import { DrawHeader } from "./draw-header";
 import { DrawProgress } from "./draw-progress";
@@ -9,8 +11,6 @@ import type { FateViewModel } from "./fate-view-model";
 import { PositionActionForm } from "./position-action-form";
 import { RecentDraws } from "./recent-draws";
 import { TransactionReview } from "./transaction-review";
-import type { ReviewAction, SecondaryActionKind } from "../features/draw/types";
-import type { WalletStatus } from "../hooks/use-wallet-session";
 
 export type { ReviewAction } from "../features/draw/types";
 export function FateMain({

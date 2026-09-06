@@ -1,7 +1,7 @@
 import type { ConnectedStandardSolanaWallet } from "@privy-io/react-auth/solana";
 import type { Address } from "@solana/kit";
-import type { FateTransactionState } from "../lib/transactions";
 import type { ReviewAction } from "../features/draw/types";
+import type { FateTransactionState } from "../lib/transactions";
 import { compactAddress, transactionStateLabel } from "./fate-format";
 
 export function TransactionReview({
